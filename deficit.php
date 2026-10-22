@@ -4,9 +4,10 @@ declare(strict_types=1);
 require_once __DIR__ . '/includes/company.php';
 require_once __DIR__ . '/includes/layout.php';
 
-$ctx = us_require_company();
+$ctx = us_require_scope();
 $user = $ctx['user'];
 $company = $ctx['company'];
+$school = $ctx['school'];
 $companyId = (int) $company['id'];
 $pdo = us_db();
 
@@ -17,25 +18,26 @@ if (!in_array($filter, ['all', 'item', 'size'], true)) {
 $itemNo = trim((string) ($_GET['item_no'] ?? ''));
 $size = trim((string) ($_GET['size'] ?? ''));
 
-$itemStmt = $pdo->prepare('SELECT DISTINCT item_no, item_name FROM skus WHERE company_id = ? ORDER BY item_name COLLATE NOCASE');
-$itemStmt->execute([$companyId]);
+$itemStmt = $pdo->prepare('SELECT DISTINCT item_no, item_name FROM skus WHERE company_id = ? AND school = ? ORDER BY item_name COLLATE NOCASE');
+$itemStmt->execute([$companyId, $school]);
 $items = $itemStmt->fetchAll();
-$sizeStmt = $pdo->prepare('SELECT DISTINCT size FROM skus WHERE company_id = ? ORDER BY size COLLATE NOCASE');
-$sizeStmt->execute([$companyId]);
+$sizeStmt = $pdo->prepare('SELECT DISTINCT size FROM skus WHERE company_id = ? AND school = ? ORDER BY size COLLATE NOCASE');
+$sizeStmt->execute([$companyId, $school]);
 $sizes = $sizeStmt->fetchAll();
 
 $rows = us_stock_rows(
     $pdo,
     $companyId,
+    $school,
     $filter === 'item' ? $itemNo : null,
     $filter === 'size' ? $size : null
 );
 $deficit = array_values(array_filter($rows, static fn(array $r): bool => (int) $r['on_hand'] < US_DEFICIT_THRESHOLD));
 
-us_header('Deficit', $user, $company);
+us_header('Deficit', $user, $company, $school);
 ?>
 <p class="lead">
-  School: <strong><?= us_h($company['name']) ?></strong> only.
+  Company <strong><?= us_h($company['name']) ?></strong> · School <strong><?= us_h($school) ?></strong> only.
   SKUs with on-hand quantity &lt; <?= (int) US_DEFICIT_THRESHOLD ?>. Filter by all, item, or size.
 </p>
 

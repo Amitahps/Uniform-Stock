@@ -4,14 +4,15 @@ declare(strict_types=1);
 require_once __DIR__ . '/includes/company.php';
 require_once __DIR__ . '/includes/layout.php';
 
-$ctx = us_require_company();
+$ctx = us_require_scope();
 $user = $ctx['user'];
 $company = $ctx['company'];
+$school = $ctx['school'];
 $companyId = (int) $company['id'];
 $pdo = us_db();
 $error = '';
 $editId = isset($_GET['edit']) ? (int) $_GET['edit'] : 0;
-$editSku = $editId > 0 ? us_get_sku($pdo, $editId, $companyId) : null;
+$editSku = $editId > 0 ? us_get_sku($pdo, $editId, $companyId, $school) : null;
 $postedMode = (string) ($_POST['name_mode'] ?? 'existing');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -31,7 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($itemNo === '' || $itemName === '' || $size === '') {
                 throw new RuntimeException('Item name, item code, and size are all required.');
             }
-            us_create_sku($pdo, $companyId, $itemNo, $itemName, $size);
+            us_create_sku($pdo, $companyId, $school, $itemNo, $itemName, $size);
             us_flash_set('ok', 'Registered ' . $itemName . ' · ' . $itemNo . ' · ' . $size . '.');
             header('Location: ' . us_url('items.php'));
             exit;
@@ -41,6 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             us_update_sku(
                 $pdo,
                 $companyId,
+                $school,
                 $skuId,
                 (string) ($_POST['item_no'] ?? ''),
                 (string) ($_POST['item_name'] ?? ''),
@@ -52,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         if ($action === 'delete') {
             $skuId = (int) ($_POST['sku_id'] ?? 0);
-            us_delete_sku($pdo, $companyId, $skuId);
+            us_delete_sku($pdo, $companyId, $school, $skuId);
             us_flash_set('ok', 'Item deleted.');
             header('Location: ' . us_url('items.php'));
             exit;
@@ -61,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = $e->getMessage();
         if ($action === 'update') {
             $editId = (int) ($_POST['sku_id'] ?? 0);
-            $editSku = $editId > 0 ? us_get_sku($pdo, $editId, $companyId) : null;
+            $editSku = $editId > 0 ? us_get_sku($pdo, $editId, $companyId, $school) : null;
             if ($editSku) {
                 $editSku['item_no'] = (string) ($_POST['item_no'] ?? $editSku['item_no']);
                 $editSku['item_name'] = (string) ($_POST['item_name'] ?? $editSku['item_name']);
@@ -71,7 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$skus = us_stock_rows($pdo, $companyId);
+$skus = us_stock_rows($pdo, $companyId, $school);
 $existingNames = [];
 foreach ($skus as $row) {
     $name = (string) $row['item_name'];
@@ -83,12 +85,12 @@ natcasesort($existingNames);
 $existingNames = array_values($existingNames);
 $defaultMode = $existingNames === [] ? 'new' : (($postedMode === 'new') ? 'new' : 'existing');
 
-us_header('Items', $user, $company);
+us_header('Items', $user, $company, $school);
 ?>
 <p class="lead">
-  School: <strong><?= us_h($company['name']) ?></strong>.
+  Company <strong><?= us_h($company['name']) ?></strong> · School <strong><?= us_h($school) ?></strong>.
   Select an existing item name and enter code + size, or create a brand-new name.
-  Uniqueness is <strong>item code + size</strong> within this school only.
+  Uniqueness is <strong>item code + size</strong> within this company + school only.
 </p>
 <?php if ($error !== ''): ?>
   <div class="flash flash-error"><?= us_h($error) ?></div>
@@ -213,7 +215,7 @@ us_header('Items', $user, $company);
 <h2 style="margin-top:1.75rem;font-size:1.15rem">Registered SKUs</h2>
 <p class="muted" style="margin-top:0">Each row is name + item code + size. Delete is blocked when the SKU has stock history.</p>
 <?php if (!$skus): ?>
-  <p class="muted">No items yet for this school.</p>
+  <p class="muted">No items yet for this company and school.</p>
 <?php else: ?>
   <table>
     <thead>

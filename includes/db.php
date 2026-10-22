@@ -24,7 +24,6 @@ function us_db(): PDO
     try {
         us_migrate($pdo);
     } catch (Throwable $first) {
-        // One more pass after aggressive leftover cleanup (half-broken mid-DROP DBs).
         us_drop_migrate_leftovers($pdo);
         try {
             us_migrate($pdo);
@@ -41,7 +40,6 @@ function us_db(): PDO
     }
     $pdo->exec('PRAGMA foreign_keys = ON');
 
-    // Soft integrity probe (does not throw on empty).
     try {
         $pdo->query('PRAGMA foreign_key_check')->fetchAll();
     } catch (Throwable $e) {
@@ -78,39 +76,46 @@ function us_table_row_count(PDO $pdo, string $table): int
     return (int) $pdo->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn();
 }
 
-/**
- * Ensure the two school scopes exist (DB table remains `companies`).
- * Legacy "Default" is renamed to Bachpan when Bachpan is missing.
- * Returns Bachpan's id for migrate backfill of orphan rows.
- */
-function us_ensure_schools(PDO $pdo): int
+function us_table_create_sql(PDO $pdo, string $table): string
 {
-    $hasBachpan = (int) $pdo->query("SELECT COUNT(*) FROM companies WHERE name = 'Bachpan'")->fetchColumn();
-    if ($hasBachpan === 0) {
-        $defaultId = (int) $pdo->query("SELECT id FROM companies WHERE name = 'Default' LIMIT 1")->fetchColumn();
-        if ($defaultId > 0) {
-            $pdo->prepare("UPDATE companies SET name = 'Bachpan' WHERE id = ?")->execute([$defaultId]);
+    $stmt = $pdo->prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?");
+    $stmt->execute([$table]);
+    return (string) ($stmt->fetchColumn() ?: '');
+}
+
+/**
+ * Ensure at least one real vendor company exists (not Bachpan/AHP.S).
+ * Returns a vendor company id for orphan backfill.
+ */
+function us_ensure_vendor_company(PDO $pdo): int
+{
+    $rows = $pdo->query('SELECT id, name FROM companies ORDER BY id')->fetchAll();
+    foreach ($rows as $row) {
+        if (!us_is_reserved_school_name((string) $row['name'])) {
+            return (int) $row['id'];
         }
     }
 
-    foreach (['Bachpan', 'AHP.S'] as $name) {
-        $stmt = $pdo->prepare(
-            'INSERT INTO companies (name) SELECT ? WHERE NOT EXISTS (SELECT 1 FROM companies WHERE name = ?)'
-        );
-        $stmt->execute([$name, $name]);
-    }
-
-    $id = (int) $pdo->query("SELECT id FROM companies WHERE name = 'Bachpan' LIMIT 1")->fetchColumn();
+    // Only school-named companies (legacy) or empty — create a vendor shell.
+    $pdo->exec("INSERT INTO companies (name) SELECT 'My Company' WHERE NOT EXISTS (SELECT 1 FROM companies WHERE name = 'My Company')");
+    $id = (int) $pdo->query("SELECT id FROM companies WHERE name = 'My Company' LIMIT 1")->fetchColumn();
     if ($id <= 0) {
-        $id = (int) $pdo->query('SELECT id FROM companies ORDER BY id LIMIT 1')->fetchColumn();
+        $pdo->exec("INSERT INTO companies (name) VALUES ('My Company')");
+        $id = (int) $pdo->lastInsertId();
     }
     return $id;
 }
 
-/** @deprecated Use us_ensure_schools() */
+/** @deprecated */
 function us_ensure_default_company(PDO $pdo): int
 {
-    return us_ensure_schools($pdo);
+    return us_ensure_vendor_company($pdo);
+}
+
+/** @deprecated */
+function us_ensure_schools(PDO $pdo): int
+{
+    return us_ensure_vendor_company($pdo);
 }
 
 /** Drop leftover *_new tables from a failed migrate (FK must be OFF). */
@@ -123,10 +128,6 @@ function us_drop_migrate_leftovers(PDO $pdo): void
 
 /**
  * Recover mid-DROP / mid-RENAME leftovers before normal migrate.
- * Cases:
- * - only foo_new exists → rename to foo
- * - both foo and foo_new exist, foo_new already has company_id → prefer foo_new, drop foo, rename
- * - both exist but foo_new is incomplete → drop foo_new (rebuild later)
  */
 function us_recover_half_broken(PDO $pdo): void
 {
@@ -176,7 +177,7 @@ CREATE TABLE IF NOT EXISTS companies (
 SQL);
 
     us_recover_half_broken($pdo);
-    $companyId = us_ensure_schools($pdo);
+    $companyId = us_ensure_vendor_company($pdo);
 
     us_ensure_company_scoped_table(
         $pdo,
@@ -186,11 +187,12 @@ SQL);
 CREATE TABLE skus (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     company_id INTEGER NOT NULL,
+    school TEXT NOT NULL DEFAULT 'Bachpan',
     item_no TEXT NOT NULL,
     item_name TEXT NOT NULL,
     size TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(company_id, item_no, size),
+    UNIQUE(company_id, school, item_no, size),
     FOREIGN KEY (company_id) REFERENCES companies(id)
 );
 SQL,
@@ -224,10 +226,11 @@ SQL,
 CREATE TABLE receipts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     company_id INTEGER NOT NULL,
+    school TEXT NOT NULL DEFAULT 'Bachpan',
     bill_no TEXT NOT NULL,
     receipt_date TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(company_id, bill_no),
+    UNIQUE(company_id, school, bill_no),
     FOREIGN KEY (company_id) REFERENCES companies(id)
 );
 SQL,
@@ -259,6 +262,7 @@ SQL,
 CREATE TABLE issues (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     company_id INTEGER NOT NULL,
+    school TEXT NOT NULL DEFAULT 'Bachpan',
     issue_date TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (company_id) REFERENCES companies(id)
@@ -306,7 +310,15 @@ CREATE TABLE issue_lines (
 SQL);
     }
 
-    // Backfill / repair orphan company_id values.
+    // Add school dimension (company + Bachpan|AHP.S) if missing or unique key outdated.
+    us_ensure_school_columns($pdo);
+
+    // Map legacy companies named Bachpan / AHP.S into school field under a vendor company.
+    us_migrate_legacy_school_companies($pdo);
+
+    $companyId = us_ensure_vendor_company($pdo);
+
+    // Backfill / repair orphan company_id / school values.
     foreach (['skus', 'receipts', 'issues'] as $t) {
         $cols = us_table_columns($pdo, $t);
         if (in_array('company_id', $cols, true)) {
@@ -315,12 +327,252 @@ SQL);
                 . " WHERE company_id IS NULL OR company_id = 0 OR company_id NOT IN (SELECT id FROM companies)"
             );
         }
+        if (in_array('school', $cols, true)) {
+            $pdo->exec(
+                "UPDATE {$t} SET school = 'Bachpan'
+                 WHERE school IS NULL OR TRIM(school) = '' OR school NOT IN ('Bachpan', 'AHP.S')"
+            );
+        }
     }
 
     $count = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
     if ($count === 0) {
         $stmt = $pdo->prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)');
         $stmt->execute([US_DEFAULT_USER, password_hash(US_DEFAULT_PASS, PASSWORD_DEFAULT)]);
+    }
+}
+
+/**
+ * Ensure skus/receipts/issues have school column and correct uniqueness.
+ */
+function us_ensure_school_columns(PDO $pdo): void
+{
+    us_rebuild_if_school_needed(
+        $pdo,
+        'skus',
+        <<<'SQL'
+CREATE TABLE skus_new (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id INTEGER NOT NULL,
+    school TEXT NOT NULL DEFAULT 'Bachpan',
+    item_no TEXT NOT NULL,
+    item_name TEXT NOT NULL,
+    size TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(company_id, school, item_no, size),
+    FOREIGN KEY (company_id) REFERENCES companies(id)
+);
+SQL,
+        'id, company_id, school, item_no, item_name, size, created_at',
+        true
+    );
+
+    us_rebuild_if_school_needed(
+        $pdo,
+        'receipts',
+        <<<'SQL'
+CREATE TABLE receipts_new (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id INTEGER NOT NULL,
+    school TEXT NOT NULL DEFAULT 'Bachpan',
+    bill_no TEXT NOT NULL,
+    receipt_date TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(company_id, school, bill_no),
+    FOREIGN KEY (company_id) REFERENCES companies(id)
+);
+SQL,
+        'id, company_id, school, bill_no, receipt_date, created_at',
+        true
+    );
+
+    us_rebuild_if_school_needed(
+        $pdo,
+        'issues',
+        <<<'SQL'
+CREATE TABLE issues_new (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id INTEGER NOT NULL,
+    school TEXT NOT NULL DEFAULT 'Bachpan',
+    issue_date TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (company_id) REFERENCES companies(id)
+);
+SQL,
+        'id, company_id, school, issue_date, created_at',
+        false
+    );
+}
+
+function us_rebuild_if_school_needed(
+    PDO $pdo,
+    string $table,
+    string $createNewSql,
+    string $insertCols,
+    bool $needsSchoolInUnique
+): void {
+    if (!us_table_exists($pdo, $table)) {
+        return;
+    }
+    $cols = us_table_columns($pdo, $table);
+    $sql = us_table_create_sql($pdo, $table);
+    $hasSchool = in_array('school', $cols, true);
+    $uniqueOk = !$needsSchoolInUnique
+        || str_contains($sql, 'UNIQUE(company_id, school, item_no, size)')
+        || str_contains($sql, 'UNIQUE(company_id, school, bill_no)');
+
+    if ($hasSchool && $uniqueOk) {
+        return;
+    }
+
+    $newName = $table . '_new';
+    $pdo->exec('DROP TABLE IF EXISTS ' . $newName);
+    $pdo->exec($createNewSql);
+
+    if ($table === 'skus') {
+        $select = <<<'SQL'
+SELECT
+    s.id,
+    s.company_id,
+    CASE
+      WHEN COALESCE(s.school, '') IN ('Bachpan', 'AHP.S') THEN s.school
+      WHEN c.name = 'AHP.S' THEN 'AHP.S'
+      WHEN c.name = 'Bachpan' THEN 'Bachpan'
+      ELSE 'Bachpan'
+    END,
+    s.item_no,
+    s.item_name,
+    s.size,
+    COALESCE(s.created_at, datetime('now'))
+FROM skus s
+LEFT JOIN companies c ON c.id = s.company_id
+SQL;
+        if (!in_array('school', $cols, true)) {
+            $select = <<<'SQL'
+SELECT
+    s.id,
+    s.company_id,
+    CASE
+      WHEN c.name = 'AHP.S' THEN 'AHP.S'
+      WHEN c.name = 'Bachpan' THEN 'Bachpan'
+      ELSE 'Bachpan'
+    END,
+    s.item_no,
+    s.item_name,
+    s.size,
+    COALESCE(s.created_at, datetime('now'))
+FROM skus s
+LEFT JOIN companies c ON c.id = s.company_id
+SQL;
+        }
+    } elseif ($table === 'receipts') {
+        if (in_array('school', $cols, true)) {
+            $select = <<<'SQL'
+SELECT
+    r.id,
+    r.company_id,
+    CASE
+      WHEN COALESCE(r.school, '') IN ('Bachpan', 'AHP.S') THEN r.school
+      WHEN c.name = 'AHP.S' THEN 'AHP.S'
+      WHEN c.name = 'Bachpan' THEN 'Bachpan'
+      ELSE 'Bachpan'
+    END,
+    r.bill_no,
+    r.receipt_date,
+    COALESCE(r.created_at, datetime('now'))
+FROM receipts r
+LEFT JOIN companies c ON c.id = r.company_id
+SQL;
+        } else {
+            $select = <<<'SQL'
+SELECT
+    r.id,
+    r.company_id,
+    CASE
+      WHEN c.name = 'AHP.S' THEN 'AHP.S'
+      WHEN c.name = 'Bachpan' THEN 'Bachpan'
+      ELSE 'Bachpan'
+    END,
+    r.bill_no,
+    r.receipt_date,
+    COALESCE(r.created_at, datetime('now'))
+FROM receipts r
+LEFT JOIN companies c ON c.id = r.company_id
+SQL;
+        }
+    } else {
+        if (in_array('school', $cols, true)) {
+            $select = <<<'SQL'
+SELECT
+    i.id,
+    i.company_id,
+    CASE
+      WHEN COALESCE(i.school, '') IN ('Bachpan', 'AHP.S') THEN i.school
+      WHEN c.name = 'AHP.S' THEN 'AHP.S'
+      WHEN c.name = 'Bachpan' THEN 'Bachpan'
+      ELSE 'Bachpan'
+    END,
+    i.issue_date,
+    COALESCE(i.created_at, datetime('now'))
+FROM issues i
+LEFT JOIN companies c ON c.id = i.company_id
+SQL;
+        } else {
+            $select = <<<'SQL'
+SELECT
+    i.id,
+    i.company_id,
+    CASE
+      WHEN c.name = 'AHP.S' THEN 'AHP.S'
+      WHEN c.name = 'Bachpan' THEN 'Bachpan'
+      ELSE 'Bachpan'
+    END,
+    i.issue_date,
+    COALESCE(i.created_at, datetime('now'))
+FROM issues i
+LEFT JOIN companies c ON c.id = i.company_id
+SQL;
+        }
+    }
+
+    $pdo->exec("INSERT INTO {$newName} ({$insertCols}) {$select}");
+    $pdo->exec('DROP TABLE ' . $table);
+    $pdo->exec("ALTER TABLE {$newName} RENAME TO {$table}");
+}
+
+/**
+ * Move data from companies named Bachpan/AHP.S into a vendor company with school set,
+ * then delete those legacy company rows.
+ */
+function us_migrate_legacy_school_companies(PDO $pdo): void
+{
+    $vendorId = us_ensure_vendor_company($pdo);
+
+    foreach (us_schools() as $school) {
+        $stmt = $pdo->prepare('SELECT id FROM companies WHERE name = ?');
+        $stmt->execute([$school]);
+        $oldId = (int) $stmt->fetchColumn();
+        if ($oldId <= 0) {
+            continue;
+        }
+        if ($oldId === $vendorId) {
+            // Vendor row was wrongly named after a school — rename it first.
+            $pdo->prepare("UPDATE companies SET name = 'My Company' WHERE id = ?")->execute([$oldId]);
+            // Keep data under this id; school column already inferred.
+            continue;
+        }
+
+        foreach (['skus', 'receipts', 'issues'] as $t) {
+            if (!in_array('school', us_table_columns($pdo, $t), true)) {
+                continue;
+            }
+            $pdo->prepare(
+                "UPDATE {$t} SET company_id = ?, school = ? WHERE company_id = ?"
+            )->execute([$vendorId, $school, $oldId]);
+        }
+
+        // Drop empty legacy school-as-company row.
+        $pdo->prepare('DELETE FROM companies WHERE id = ?')->execute([$oldId]);
     }
 }
 
@@ -369,12 +621,7 @@ function us_rebuild_table_with_company(
 function us_list_companies(PDO $pdo): array
 {
     return $pdo->query(
-        "SELECT id, name, created_at FROM companies
-         ORDER BY CASE name
-           WHEN 'Bachpan' THEN 1
-           WHEN 'AHP.S' THEN 2
-           ELSE 3
-         END, name COLLATE NOCASE"
+        'SELECT id, name, created_at FROM companies ORDER BY name COLLATE NOCASE'
     )->fetchAll();
 }
 
@@ -390,7 +637,12 @@ function us_create_company(PDO $pdo, string $name): int
 {
     $name = trim($name);
     if ($name === '') {
-        throw new RuntimeException('School name is required.');
+        throw new RuntimeException('Company name is required.');
+    }
+    if (us_is_reserved_school_name($name)) {
+        throw new RuntimeException(
+            '"' . $name . '" is a school, not a company. Create your business/vendor company, then choose Bachpan or AHP.S for stock.'
+        );
     }
     try {
         $stmt = $pdo->prepare('INSERT INTO companies (name) VALUES (?)');
@@ -398,33 +650,31 @@ function us_create_company(PDO $pdo, string $name): int
         return (int) $pdo->lastInsertId();
     } catch (PDOException $e) {
         if (str_contains($e->getMessage(), 'UNIQUE')) {
-            throw new RuntimeException('A school with that name already exists.');
+            throw new RuntimeException('A company with that name already exists.');
         }
         throw $e;
     }
 }
 
 /**
- * Permanently delete one school (company row) and only its stock data (items, bills, issues).
- * Other schools are untouched. Caller must verify admin password first.
+ * Permanently delete one company and only its stock data (all schools under it).
+ * Other companies are untouched. Caller must verify admin password first.
  */
 function us_delete_company(PDO $pdo, int $companyId): void
 {
     $company = us_get_company($pdo, $companyId);
     if (!$company) {
-        throw new RuntimeException('School not found.');
+        throw new RuntimeException('Company not found.');
     }
 
     $pdo->beginTransaction();
     try {
-        // Lines tied to this company's issues/receipts/skus only.
         $pdo->prepare(
             'DELETE FROM issue_lines WHERE issue_id IN (SELECT id FROM issues WHERE company_id = ?)'
         )->execute([$companyId]);
         $pdo->prepare(
             'DELETE FROM receipt_lines WHERE receipt_id IN (SELECT id FROM receipts WHERE company_id = ?)'
         )->execute([$companyId]);
-        // Safety: lines that only reference this company's SKUs.
         $pdo->prepare(
             'DELETE FROM issue_lines WHERE sku_id IN (SELECT id FROM skus WHERE company_id = ?)'
         )->execute([$companyId]);
@@ -475,33 +725,39 @@ function us_on_hand_as_of(PDO $pdo, int $skuId, string $asOf): int
 }
 
 /**
- * Date-range movement report for one company.
- * qty_in / qty_out = sums with receipt_date / issue_date in [from, to] inclusive.
- * balance = closing on-hand as of date_to (all movements with date <= to).
+ * Date-range movement report for one company + school.
  *
  * @return list<array{id:int,item_no:string,item_name:string,size:string,qty_in:int,qty_out:int,balance:int}>
  */
-function us_movement_rows(PDO $pdo, int $companyId, string $dateFrom, string $dateTo, ?string $itemNo = null): array
-{
-    $skus = us_stock_rows($pdo, $companyId, $itemNo);
+function us_movement_rows(
+    PDO $pdo,
+    int $companyId,
+    string $school,
+    string $dateFrom,
+    string $dateTo,
+    ?string $itemNo = null
+): array {
+    $skus = us_stock_rows($pdo, $companyId, $school, $itemNo);
     $inStmt = $pdo->prepare(
         'SELECT COALESCE(SUM(rl.quantity), 0)
          FROM receipt_lines rl
          INNER JOIN receipts r ON r.id = rl.receipt_id
-         WHERE rl.sku_id = ? AND r.company_id = ? AND r.receipt_date >= ? AND r.receipt_date <= ?'
+         WHERE rl.sku_id = ? AND r.company_id = ? AND r.school = ?
+           AND r.receipt_date >= ? AND r.receipt_date <= ?'
     );
     $outStmt = $pdo->prepare(
         'SELECT COALESCE(SUM(il.quantity), 0)
          FROM issue_lines il
          INNER JOIN issues i ON i.id = il.issue_id
-         WHERE il.sku_id = ? AND i.company_id = ? AND i.issue_date >= ? AND i.issue_date <= ?'
+         WHERE il.sku_id = ? AND i.company_id = ? AND i.school = ?
+           AND i.issue_date >= ? AND i.issue_date <= ?'
     );
 
     $rows = [];
     foreach ($skus as $sku) {
         $skuId = (int) $sku['id'];
-        $inStmt->execute([$skuId, $companyId, $dateFrom, $dateTo]);
-        $outStmt->execute([$skuId, $companyId, $dateFrom, $dateTo]);
+        $inStmt->execute([$skuId, $companyId, $school, $dateFrom, $dateTo]);
+        $outStmt->execute([$skuId, $companyId, $school, $dateFrom, $dateTo]);
         $qtyIn = (int) $inStmt->fetchColumn();
         $qtyOut = (int) $outStmt->fetchColumn();
         $rows[] = [
@@ -529,21 +785,30 @@ function us_sku_has_movements(PDO $pdo, int $skuId): bool
     return (bool) $i->fetch();
 }
 
-function us_stock_rows(PDO $pdo, int $companyId, ?string $itemNo = null, ?string $size = null): array
-{
+function us_stock_rows(
+    PDO $pdo,
+    int $companyId,
+    string $school,
+    ?string $itemNo = null,
+    ?string $size = null
+): array {
+    if (!us_is_valid_school($school)) {
+        return [];
+    }
     $sql = <<<'SQL'
 SELECT
     s.id,
     s.company_id,
+    s.school,
     s.item_no,
     s.item_name,
     s.size,
     COALESCE((SELECT SUM(rl.quantity) FROM receipt_lines rl WHERE rl.sku_id = s.id), 0)
       - COALESCE((SELECT SUM(il.quantity) FROM issue_lines il WHERE il.sku_id = s.id), 0) AS on_hand
 FROM skus s
-WHERE s.company_id = ?
+WHERE s.company_id = ? AND s.school = ?
 SQL;
-    $params = [$companyId];
+    $params = [$companyId, $school];
     if ($itemNo !== null && $itemNo !== '') {
         $sql .= ' AND s.item_no = ?';
         $params[] = $itemNo;
@@ -558,15 +823,25 @@ SQL;
     return $stmt->fetchAll();
 }
 
-function us_create_sku(PDO $pdo, int $companyId, string $itemNo, string $itemName, string $size): int
-{
+function us_create_sku(
+    PDO $pdo,
+    int $companyId,
+    string $school,
+    string $itemNo,
+    string $itemName,
+    string $size
+): int {
+    if (!us_is_valid_school($school)) {
+        throw new RuntimeException('Choose Bachpan or AHP.S as the school.');
+    }
     $itemNo = trim($itemNo);
     $itemName = trim($itemName);
     $size = trim($size);
 
-    // Uniqueness is company + item code + size only. Item names may repeat across codes.
-    $find = $pdo->prepare('SELECT id FROM skus WHERE company_id = ? AND item_no = ? AND size = ?');
-    $find->execute([$companyId, $itemNo, $size]);
+    $find = $pdo->prepare(
+        'SELECT id FROM skus WHERE company_id = ? AND school = ? AND item_no = ? AND size = ?'
+    );
+    $find->execute([$companyId, $school, $itemNo, $size]);
     if ($find->fetch()) {
         throw new RuntimeException(
             'Item code "' . $itemNo . '" with size "' . $size . '" already exists for this school. '
@@ -574,22 +849,31 @@ function us_create_sku(PDO $pdo, int $companyId, string $itemNo, string $itemNam
         );
     }
 
-    // Same item code, new size: keep the existing display name for that code.
-    // New item code may freely reuse any existing name.
-    $nameStmt = $pdo->prepare('SELECT item_name FROM skus WHERE company_id = ? AND item_no = ? ORDER BY id LIMIT 1');
-    $nameStmt->execute([$companyId, $itemNo]);
+    $nameStmt = $pdo->prepare(
+        'SELECT item_name FROM skus WHERE company_id = ? AND school = ? AND item_no = ? ORDER BY id LIMIT 1'
+    );
+    $nameStmt->execute([$companyId, $school, $itemNo]);
     $existingName = $nameStmt->fetchColumn();
     if ($existingName !== false && $existingName !== '') {
         $itemName = (string) $existingName;
     }
 
-    $ins = $pdo->prepare('INSERT INTO skus (company_id, item_no, item_name, size) VALUES (?, ?, ?, ?)');
-    $ins->execute([$companyId, $itemNo, $itemName, $size]);
+    $ins = $pdo->prepare(
+        'INSERT INTO skus (company_id, school, item_no, item_name, size) VALUES (?, ?, ?, ?, ?)'
+    );
+    $ins->execute([$companyId, $school, $itemNo, $itemName, $size]);
     return (int) $pdo->lastInsertId();
 }
 
-function us_update_sku(PDO $pdo, int $companyId, int $skuId, string $itemNo, string $itemName, string $size): void
-{
+function us_update_sku(
+    PDO $pdo,
+    int $companyId,
+    string $school,
+    int $skuId,
+    string $itemNo,
+    string $itemName,
+    string $size
+): void {
     $itemNo = trim($itemNo);
     $itemName = trim($itemName);
     $size = trim($size);
@@ -597,49 +881,55 @@ function us_update_sku(PDO $pdo, int $companyId, int $skuId, string $itemNo, str
         throw new RuntimeException('Item name, item code, and size are all required.');
     }
 
-    $sku = us_get_sku($pdo, $skuId, $companyId);
+    $sku = us_get_sku($pdo, $skuId, $companyId, $school);
     if (!$sku) {
-        throw new RuntimeException('Item not found in this school.');
+        throw new RuntimeException('Item not found for this company and school.');
     }
 
-    $dup = $pdo->prepare('SELECT id FROM skus WHERE company_id = ? AND item_no = ? AND size = ? AND id != ?');
-    $dup->execute([$companyId, $itemNo, $size, $skuId]);
+    $dup = $pdo->prepare(
+        'SELECT id FROM skus WHERE company_id = ? AND school = ? AND item_no = ? AND size = ? AND id != ?'
+    );
+    $dup->execute([$companyId, $school, $itemNo, $size, $skuId]);
     if ($dup->fetch()) {
         throw new RuntimeException('Another item already uses item code "' . $itemNo . '" with size "' . $size . '".');
     }
 
     $oldItemNo = (string) $sku['item_no'];
-    $upd = $pdo->prepare('UPDATE skus SET item_no = ?, item_name = ?, size = ? WHERE id = ? AND company_id = ?');
-    $upd->execute([$itemNo, $itemName, $size, $skuId, $companyId]);
+    $upd = $pdo->prepare(
+        'UPDATE skus SET item_no = ?, item_name = ?, size = ? WHERE id = ? AND company_id = ? AND school = ?'
+    );
+    $upd->execute([$itemNo, $itemName, $size, $skuId, $companyId, $school]);
 
     if ($itemNo === $oldItemNo) {
-        $sync = $pdo->prepare('UPDATE skus SET item_name = ? WHERE company_id = ? AND item_no = ?');
-        $sync->execute([$itemName, $companyId, $itemNo]);
+        $sync = $pdo->prepare(
+            'UPDATE skus SET item_name = ? WHERE company_id = ? AND school = ? AND item_no = ?'
+        );
+        $sync->execute([$itemName, $companyId, $school, $itemNo]);
     }
 }
 
-function us_delete_sku(PDO $pdo, int $companyId, int $skuId): void
+function us_delete_sku(PDO $pdo, int $companyId, string $school, int $skuId): void
 {
-    $sku = us_get_sku($pdo, $skuId, $companyId);
+    $sku = us_get_sku($pdo, $skuId, $companyId, $school);
     if (!$sku) {
-        throw new RuntimeException('Item not found in this school.');
+        throw new RuntimeException('Item not found for this company and school.');
     }
     if (us_sku_has_movements($pdo, $skuId)) {
         throw new RuntimeException(
             'Cannot delete this item — it has stock-in or stock-out history. Delete is only allowed for unused SKUs.'
         );
     }
-    $del = $pdo->prepare('DELETE FROM skus WHERE id = ? AND company_id = ?');
-    $del->execute([$skuId, $companyId]);
+    $del = $pdo->prepare('DELETE FROM skus WHERE id = ? AND company_id = ? AND school = ?');
+    $del->execute([$skuId, $companyId, $school]);
 }
 
 /**
  * @return array<string, array{item_name: string, sizes: list<array{sku_id: int, size: string, on_hand: int}>}>
  */
-function us_item_catalog(PDO $pdo, int $companyId): array
+function us_item_catalog(PDO $pdo, int $companyId, string $school): array
 {
     $catalog = [];
-    foreach (us_stock_rows($pdo, $companyId) as $row) {
+    foreach (us_stock_rows($pdo, $companyId, $school) as $row) {
         $itemNo = (string) $row['item_no'];
         if (!isset($catalog[$itemNo])) {
             $catalog[$itemNo] = [
@@ -656,13 +946,27 @@ function us_item_catalog(PDO $pdo, int $companyId): array
     return $catalog;
 }
 
-function us_get_sku(PDO $pdo, int $skuId, ?int $companyId = null): ?array
-{
-    if ($companyId !== null) {
-        $stmt = $pdo->prepare('SELECT id, company_id, item_no, item_name, size FROM skus WHERE id = ? AND company_id = ?');
+function us_get_sku(
+    PDO $pdo,
+    int $skuId,
+    ?int $companyId = null,
+    ?string $school = null
+): ?array {
+    if ($companyId !== null && $school !== null) {
+        $stmt = $pdo->prepare(
+            'SELECT id, company_id, school, item_no, item_name, size FROM skus
+             WHERE id = ? AND company_id = ? AND school = ?'
+        );
+        $stmt->execute([$skuId, $companyId, $school]);
+    } elseif ($companyId !== null) {
+        $stmt = $pdo->prepare(
+            'SELECT id, company_id, school, item_no, item_name, size FROM skus WHERE id = ? AND company_id = ?'
+        );
         $stmt->execute([$skuId, $companyId]);
     } else {
-        $stmt = $pdo->prepare('SELECT id, company_id, item_no, item_name, size FROM skus WHERE id = ?');
+        $stmt = $pdo->prepare(
+            'SELECT id, company_id, school, item_no, item_name, size FROM skus WHERE id = ?'
+        );
         $stmt->execute([$skuId]);
     }
     $row = $stmt->fetch();

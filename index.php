@@ -4,7 +4,6 @@ declare(strict_types=1);
 require_once __DIR__ . '/includes/bootstrap.php';
 require_once __DIR__ . '/includes/auth.php';
 
-// Never white-screen: redirect guests before touching the DB.
 try {
     us_start_session();
     if (empty($_SESSION['user_id'])) {
@@ -19,12 +18,13 @@ try {
     require_once __DIR__ . '/includes/company.php';
     require_once __DIR__ . '/includes/layout.php';
 
-    $ctx = us_require_company();
+    $ctx = us_require_scope();
     $user = $ctx['user'];
     $company = $ctx['company'];
+    $school = $ctx['school'];
     $companyId = (int) $company['id'];
     $pdo = us_db();
-    $rows = us_stock_rows($pdo, $companyId);
+    $rows = us_stock_rows($pdo, $companyId, $school);
     $totalSkus = count($rows);
     $low = 0;
     $units = 0;
@@ -36,12 +36,12 @@ try {
         }
     }
 
-    us_header('Dashboard', $user, $company);
+    us_header('Dashboard', $user, $company, $school);
     ?>
 <p class="lead">
-  Working in school <strong><?= us_h($company['name']) ?></strong>.
-  Receive bills, issue stock, and review on-hand balances for this school only (Bachpan and AHP.S stay separate).
-  <a href="<?= us_h(us_url('companies.php')) ?>">Switch school</a>
+  Company <strong><?= us_h($company['name']) ?></strong> · School <strong><?= us_h($school) ?></strong>.
+  Stock for Bachpan and AHP.S stay separate under this company.
+  <a href="<?= us_h(us_url('companies.php')) ?>">Switch company / school</a>
 </p>
 <ul class="card-list">
   <li><strong><?= (int) $totalSkus ?></strong> SKUs · <strong><?= (int) $units ?></strong> units on hand</li>

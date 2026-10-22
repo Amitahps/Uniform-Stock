@@ -8,6 +8,7 @@ require_once __DIR__ . '/includes/layout.php';
 $user = us_require_login();
 $companyId = us_current_company_id();
 $company = $companyId ? us_get_company(us_db(), $companyId) : null;
+$school = us_current_school();
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -34,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-us_header('Change password', $user, $company);
+us_header('Change password', $user, $company, $school);
 ?>
 <p class="lead">Update the admin login password for this site.</p>
 <?php if ($error !== ''): ?>

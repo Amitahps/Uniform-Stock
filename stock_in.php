@@ -4,9 +4,10 @@ declare(strict_types=1);
 require_once __DIR__ . '/includes/company.php';
 require_once __DIR__ . '/includes/layout.php';
 
-$ctx = us_require_company();
+$ctx = us_require_scope();
 $user = $ctx['user'];
 $company = $ctx['company'];
+$school = $ctx['school'];
 $companyId = (int) $company['id'];
 $pdo = us_db();
 $error = '';
@@ -56,8 +57,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Enter quantity for at least one item code/size.';
     } else {
         foreach ($lines as $line) {
-            if (!us_get_sku($pdo, $line['sku_id'], $companyId)) {
-                $error = 'One or more selected items are not registered for this school.';
+            if (!us_get_sku($pdo, $line['sku_id'], $companyId, $school)) {
+                $error = 'One or more selected items are not registered for this company and school.';
                 break;
             }
         }
@@ -66,8 +67,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($error === '') {
         try {
             $pdo->beginTransaction();
-            $insR = $pdo->prepare('INSERT INTO receipts (company_id, bill_no, receipt_date) VALUES (?, ?, ?)');
-            $insR->execute([$companyId, $billNo, $receiptDate]);
+            $insR = $pdo->prepare('INSERT INTO receipts (company_id, school, bill_no, receipt_date) VALUES (?, ?, ?, ?)');
+            $insR->execute([$companyId, $school, $billNo, $receiptDate]);
             $receiptId = (int) $pdo->lastInsertId();
             $insL = $pdo->prepare('INSERT INTO receipt_lines (receipt_id, sku_id, quantity) VALUES (?, ?, ?)');
             foreach ($lines as $line) {
@@ -82,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->rollBack();
             }
             if (str_contains($e->getMessage(), 'UNIQUE')) {
-                $error = 'Bill number already exists for this school. Use a new bill number for replenishment.';
+                $error = 'Bill number already exists for this company and school. Use a new bill number for replenishment.';
             } else {
                 $error = 'Could not save bill: ' . $e->getMessage();
             }
@@ -90,7 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$skus = us_stock_rows($pdo, $companyId);
+$skus = us_stock_rows($pdo, $companyId, $school);
 
 /** @var array<string, list<array{sku_id:int,item_no:string,size:string,on_hand:int}>> $byName */
 $byName = [];
@@ -115,10 +116,10 @@ foreach ($byName as $name => $list) {
 }
 $itemNames = array_keys($byName);
 
-us_header('Stock in', $user, $company);
+us_header('Stock in', $user, $company, $school);
 ?>
 <p class="lead">
-  School: <strong><?= us_h($company['name']) ?></strong>.
+  Company <strong><?= us_h($company['name']) ?></strong> · School <strong><?= us_h($school) ?></strong>.
   Enter the bill once, then add one or more <strong>item name</strong> blocks.
   Each block shows every item code and size with <strong>On hand</strong> (current stock) before the qty-to-add field.
   Fill quantities, leave blank to skip, and <strong>Save</strong> once for the whole bill.
@@ -129,7 +130,7 @@ us_header('Stock in', $user, $company);
 
 <?php if ($itemNames === []): ?>
   <div class="flash flash-warn">
-    No items registered for this school.
+    No items registered for this company and school.
     <a href="<?= us_h(us_url('items.php')) ?>">Add an item</a> first, then receive stock here.
   </div>
 <?php else: ?>

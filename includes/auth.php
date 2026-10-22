@@ -65,7 +65,7 @@ function us_verify_user_password(int $userId, string $password): bool
 function us_logout(): void
 {
     us_start_session();
-    $_SESSION = []; // clears user_id and company_id
+    $_SESSION = []; // clears user_id, company_id, school
     if (ini_get('session.use_cookies')) {
         $p = session_get_cookie_params();
         setcookie(session_name(), '', time() - 42000, $p['path'], $p['domain'], (bool) $p['secure'], (bool) $p['httponly']);
