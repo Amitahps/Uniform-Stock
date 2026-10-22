@@ -53,6 +53,15 @@ function us_attempt_login(string $username, string $password): bool
     return true;
 }
 
+/** Re-check the logged-in user's password (e.g. before deleting a company). */
+function us_verify_user_password(int $userId, string $password): bool
+{
+    $stmt = us_db()->prepare('SELECT password_hash FROM users WHERE id = ?');
+    $stmt->execute([$userId]);
+    $hash = $stmt->fetchColumn();
+    return is_string($hash) && $hash !== '' && password_verify($password, $hash);
+}
+
 function us_logout(): void
 {
     us_start_session();

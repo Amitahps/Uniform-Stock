@@ -373,6 +373,47 @@ function us_create_company(PDO $pdo, string $name): int
     }
 }
 
+/**
+ * Permanently delete one company and only its stock data (items, bills, issues).
+ * Other companies are untouched. Caller must verify admin password first.
+ */
+function us_delete_company(PDO $pdo, int $companyId): void
+{
+    $company = us_get_company($pdo, $companyId);
+    if (!$company) {
+        throw new RuntimeException('Company not found.');
+    }
+
+    $pdo->beginTransaction();
+    try {
+        // Lines tied to this company's issues/receipts/skus only.
+        $pdo->prepare(
+            'DELETE FROM issue_lines WHERE issue_id IN (SELECT id FROM issues WHERE company_id = ?)'
+        )->execute([$companyId]);
+        $pdo->prepare(
+            'DELETE FROM receipt_lines WHERE receipt_id IN (SELECT id FROM receipts WHERE company_id = ?)'
+        )->execute([$companyId]);
+        // Safety: lines that only reference this company's SKUs.
+        $pdo->prepare(
+            'DELETE FROM issue_lines WHERE sku_id IN (SELECT id FROM skus WHERE company_id = ?)'
+        )->execute([$companyId]);
+        $pdo->prepare(
+            'DELETE FROM receipt_lines WHERE sku_id IN (SELECT id FROM skus WHERE company_id = ?)'
+        )->execute([$companyId]);
+
+        $pdo->prepare('DELETE FROM issues WHERE company_id = ?')->execute([$companyId]);
+        $pdo->prepare('DELETE FROM receipts WHERE company_id = ?')->execute([$companyId]);
+        $pdo->prepare('DELETE FROM skus WHERE company_id = ?')->execute([$companyId]);
+        $pdo->prepare('DELETE FROM companies WHERE id = ?')->execute([$companyId]);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
+
 function us_on_hand(PDO $pdo, int $skuId): int
 {
     $in = $pdo->prepare('SELECT COALESCE(SUM(quantity), 0) FROM receipt_lines WHERE sku_id = ?');
@@ -380,6 +421,69 @@ function us_on_hand(PDO $pdo, int $skuId): int
     $out = $pdo->prepare('SELECT COALESCE(SUM(quantity), 0) FROM issue_lines WHERE sku_id = ?');
     $out->execute([$skuId]);
     return (int) $in->fetchColumn() - (int) $out->fetchColumn();
+}
+
+/** On-hand for a SKU counting only movements with dates on or before $asOf (Y-m-d). */
+function us_on_hand_as_of(PDO $pdo, int $skuId, string $asOf): int
+{
+    $in = $pdo->prepare(
+        'SELECT COALESCE(SUM(rl.quantity), 0)
+         FROM receipt_lines rl
+         INNER JOIN receipts r ON r.id = rl.receipt_id
+         WHERE rl.sku_id = ? AND r.receipt_date <= ?'
+    );
+    $in->execute([$skuId, $asOf]);
+    $out = $pdo->prepare(
+        'SELECT COALESCE(SUM(il.quantity), 0)
+         FROM issue_lines il
+         INNER JOIN issues i ON i.id = il.issue_id
+         WHERE il.sku_id = ? AND i.issue_date <= ?'
+    );
+    $out->execute([$skuId, $asOf]);
+    return (int) $in->fetchColumn() - (int) $out->fetchColumn();
+}
+
+/**
+ * Date-range movement report for one company.
+ * qty_in / qty_out = sums with receipt_date / issue_date in [from, to] inclusive.
+ * balance = closing on-hand as of date_to (all movements with date <= to).
+ *
+ * @return list<array{id:int,item_no:string,item_name:string,size:string,qty_in:int,qty_out:int,balance:int}>
+ */
+function us_movement_rows(PDO $pdo, int $companyId, string $dateFrom, string $dateTo, ?string $itemNo = null): array
+{
+    $skus = us_stock_rows($pdo, $companyId, $itemNo);
+    $inStmt = $pdo->prepare(
+        'SELECT COALESCE(SUM(rl.quantity), 0)
+         FROM receipt_lines rl
+         INNER JOIN receipts r ON r.id = rl.receipt_id
+         WHERE rl.sku_id = ? AND r.company_id = ? AND r.receipt_date >= ? AND r.receipt_date <= ?'
+    );
+    $outStmt = $pdo->prepare(
+        'SELECT COALESCE(SUM(il.quantity), 0)
+         FROM issue_lines il
+         INNER JOIN issues i ON i.id = il.issue_id
+         WHERE il.sku_id = ? AND i.company_id = ? AND i.issue_date >= ? AND i.issue_date <= ?'
+    );
+
+    $rows = [];
+    foreach ($skus as $sku) {
+        $skuId = (int) $sku['id'];
+        $inStmt->execute([$skuId, $companyId, $dateFrom, $dateTo]);
+        $outStmt->execute([$skuId, $companyId, $dateFrom, $dateTo]);
+        $qtyIn = (int) $inStmt->fetchColumn();
+        $qtyOut = (int) $outStmt->fetchColumn();
+        $rows[] = [
+            'id' => $skuId,
+            'item_no' => (string) $sku['item_no'],
+            'item_name' => (string) $sku['item_name'],
+            'size' => (string) $sku['size'],
+            'qty_in' => $qtyIn,
+            'qty_out' => $qtyOut,
+            'balance' => us_on_hand_as_of($pdo, $skuId, $dateTo),
+        ];
+    }
+    return $rows;
 }
 
 function us_sku_has_movements(PDO $pdo, int $skuId): bool
