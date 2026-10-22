@@ -48,13 +48,6 @@ foreach ($stock as $row) {
 
 us_header('Issue to company', $user, $company, $school);
 ?>
-<p class="lead">
-  <strong>Issue to company</strong> (inter-company transfer) — not the same as normal Stock out.
-  Deducts from <strong><?= us_h($company['name']) ?></strong> · <strong><?= us_h($school) ?></strong>
-  and adds the same qty to another company for the <strong>same school</strong> and item name/code/size
-  (creates the SKU on the recipient if missing).
-  Admin or power-assigned staff only.
-</p>
 <?php if ($error !== ''): ?>
   <div class="flash flash-error"><?= us_h($error) ?></div>
 <?php endif; ?>

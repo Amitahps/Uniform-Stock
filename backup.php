@@ -33,10 +33,6 @@ $dbMtime = $dbExists ? date('Y-m-d H:i', (int) filemtime($dbPath)) : '';
 
 us_header('Backup', $user, $company, $school);
 ?>
-<p class="lead">
-  Download a copy of the <strong>source code</strong> or a <strong>data backup</strong> (SQLite) to save on your laptop.
-  Both require login. The <code>data/</code> folder is blocked from public URLs — use these buttons only.
-</p>
 <?php if ($error !== ''): ?>
   <div class="flash flash-error"><?= us_h($error) ?></div>
 <?php endif; ?>

@@ -4,7 +4,7 @@ PHP + SQLite stock inventory for a school uniform vendor. **Separate website** f
 
 ## Features
 
-- **Companies** (admin) — create/select/remove vendor company. **Remove company** (password + name confirm) deletes that company’s stock for **both** schools.
+- **Companies** (admin) — create/select/**rename**/remove vendor company. **Remove company** (password + name confirm) deletes that company’s stock for **both** schools.
 - **Schools** — with a company selected, **Bachpan** and **AHP.S** tabs stay at the top. One click switches the active school; Items / Stock / Reports / Deficit follow that school. Stocks never mix.
 - **Users** (admin) — create **staff** usernames/passwords, assign companies, optionally assign **Power**, reset passwords, delete staff.
 - **Power** — staff with power (and admin) may remove items from all companies, **Issue to company**, and view the company-issue report.
@@ -13,7 +13,8 @@ PHP + SQLite stock inventory for a school uniform vendor. **Separate website** f
 - **Items** — create name+code+size once → SKU appears in **every company** for that school only. Remove (power) deletes from all companies for that school. Uniqueness **company + school + name + code + size**.
 - **Issue to company** — transfer stock company → company (same school + SKU); deduct source, credit destination; recorded for report.
 - **Reports** — lookup / statement / movements; plus **Issued to companies** (date from→to, item-wise) for admin/power.
-- **Stock in / out / Deficit** — company+school scoped. Stock out ≠ Issue to company.
+- **Stock in / out / Deficit** — company+school scoped. Admin/power can **edit or delete** mistaken stock-in bills and stock-out entries. Stock out ≠ Issue to company.
+- **Catalog exception** — items created under company **By School** are not visible to **Bachpan HSP** (case-insensitive name match).
 - **Backup** (admin) — download source ZIP and timestamped SQLite backup; `data/` not publicly exposed.
 
 SKU identity is **company + school + item name + item code + size**. On-hand = sum(receipts) − sum(issues) per SKU.
@@ -49,7 +50,7 @@ Health check: `http://127.0.0.1:8080/check.php`
 2. Connect GitHub → repository **`Amitahps/Uniform-Stock`** → deploy into that site’s `public_html` (document root). Use **Redeploy** after each push to `main` if auto-deploy lags.
 3. Ensure PHP 8+ and **pdo_sqlite** are enabled for the site.
 4. Make `data/` writable by the web user (chmod 775 or Hostinger file manager permissions). The app creates `data/stock.db` on first request.
-5. Open `https://YOUR-DOMAIN/check.php` — all checks should pass, and **App version** must match the footer (`US_APP_VERSION`, e.g. `20261022-xfer-v4`). If the version is missing/old, click **Redeploy** on Hostinger Git for `main`.
+5. Open `https://YOUR-DOMAIN/check.php` — all checks should pass, and **App version** must match the footer (`US_APP_VERSION`, e.g. `20261022-ui-v5`). If the version is missing/old, click **Redeploy** on Hostinger Git for `main`.
 6. Sign in at `/login.php` with `admin` / `admin123`, select a company — large **Bachpan** | **AHP.S** buttons appear at the **very top**. Admin nav includes **Users** and **Issue to company**.
 7. **Users** → create staff (username, password, companies, optional Power) → log out → sign in as staff to verify nav.
 8. Change the admin password under Password.

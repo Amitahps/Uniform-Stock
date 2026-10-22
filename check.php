@@ -53,6 +53,8 @@ $featureFiles = [
     'switch_school.php' => 'School switcher',
     'select_company.php' => 'Staff company picker',
     'issue_company.php' => 'Issue to company',
+    'stock_in_edit.php' => 'Edit stock in',
+    'stock_out_edit.php' => 'Edit stock out',
     'includes/layout.php' => 'Layout / school bar',
 ];
 foreach ($featureFiles as $rel => $label) {
@@ -66,6 +68,11 @@ $ok('School bar markup in layout', str_contains($layoutBody, 'school-bar'), 'inc
 $dbBody = is_file(__DIR__ . '/includes/db.php') ? (string) file_get_contents(__DIR__ . '/includes/db.php') : '';
 $ok('Catalog sync helpers present', str_contains($dbBody, 'us_create_sku_all_companies'), 'includes/db.php');
 $ok('Company transfer helpers present', str_contains($dbBody, 'us_issue_to_company'), 'includes/db.php');
+$ok('Company rename helper present', str_contains($dbBody, 'us_rename_company'), 'includes/db.php');
+$ok('By School catalog exception', str_contains($dbBody, 'us_purge_by_school_skus_from_bachpan_hsp'), 'includes/db.php');
+$configBody = is_file(__DIR__ . '/includes/config.php') ? (string) file_get_contents(__DIR__ . '/includes/config.php') : '';
+$ok('Catalog company name constants', str_contains($configBody, 'US_CATALOG_COMPANY_BY_SCHOOL'), 'includes/config.php');
+$ok('Compact school-tab CSS', str_contains($cssBody, 'min-height: 1.85rem'), 'assets/style.css');
 
 if ($dbOk) {
     try {

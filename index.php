@@ -29,10 +29,6 @@ try {
 
     if ($school === null) {
         ?>
-<p class="lead">
-  Company <strong><?= us_h($company['name']) ?></strong>.
-  Choose <strong>Bachpan</strong> or <strong>AHP.S</strong> using the school tabs above to continue.
-</p>
         <?php
         us_footer();
         exit;
@@ -50,26 +46,6 @@ try {
         }
     }
     ?>
-<p class="lead">
-  Company <strong><?= us_h($company['name']) ?></strong> · School <strong><?= us_h($school) ?></strong>.
-  Switch school anytime with the tabs above.
-  <?php if (us_is_admin($user)): ?>
-    <a href="<?= us_h(us_url('companies.php')) ?>">Manage companies</a>
-  <?php else: ?>
-    <a href="<?= us_h(us_url('select_company.php')) ?>">Switch company</a>
-  <?php endif; ?>
-</p>
-<?php if (us_is_admin($user)): ?>
-<div class="flash flash-warn" style="margin-bottom:1rem">
-  <strong>Staff users:</strong> open <a href="<?= us_h(us_url('users.php')) ?>"><strong>Users</strong></a>
-  to create a staff username/password and assign companies.
-  Staff log in on the Login page; they will <strong>not</strong> see Companies, Users, Backup, or Password.
-</div>
-<?php else: ?>
-<div class="flash flash-ok" style="margin-bottom:1rem">
-  Signed in as <strong>staff</strong>. You can work Items / Stock / Reports for your assigned companies only.
-</div>
-<?php endif; ?>
 <ul class="card-list">
   <li><strong><?= (int) $totalSkus ?></strong> SKUs · <strong><?= (int) $units ?></strong> units on hand</li>
   <li>

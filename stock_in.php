@@ -116,23 +116,17 @@ foreach ($byName as $name => $list) {
 }
 $itemNames = array_keys($byName);
 
+$canEdit = us_has_power($user);
+$recent = us_list_receipts($pdo, $companyId, $school);
+
 us_header('Stock in', $user, $company, $school);
 ?>
-<p class="lead">
-  Company <strong><?= us_h($company['name']) ?></strong> · School <strong><?= us_h($school) ?></strong>.
-  Enter the bill once, then add one or more <strong>item name</strong> blocks.
-  Each block shows every item code and size with <strong>On hand</strong> (current stock) before the qty-to-add field.
-  Fill quantities, leave blank to skip, and <strong>Save</strong> once for the whole bill.
-</p>
 <?php if ($error !== ''): ?>
   <div class="flash flash-error"><?= us_h($error) ?></div>
 <?php endif; ?>
 
 <?php if ($itemNames === []): ?>
-  <div class="flash flash-warn">
-    No items registered for this company and school.
-    <a href="<?= us_h(us_url('items.php')) ?>">Add an item</a> first, then receive stock here.
-  </div>
+  <div class="flash flash-warn">No items. <a href="<?= us_h(us_url('items.php')) ?>">Items</a></div>
 <?php else: ?>
 <form method="post" id="stock_in_form">
   <div class="grid grid-2" style="margin-bottom:1rem">
@@ -204,12 +198,6 @@ us_header('Stock in', $user, $company, $school);
     });
     table.appendChild(tbody);
     wrap.appendChild(table);
-    const tip = document.createElement('p');
-    tip.className = 'muted';
-    tip.style.margin = '0.5rem 0 0';
-    tip.style.fontSize = '0.9rem';
-    tip.textContent = 'Leave qty blank or 0 to skip a code/size. All blocks save together under this bill.';
-    wrap.appendChild(tip);
   }
 
   function usedNames(exceptSel) {
@@ -270,5 +258,35 @@ us_header('Stock in', $user, $company, $school);
   addBlock();
 })();
 </script>
+<?php endif; ?>
+
+<?php if ($recent): ?>
+  <h2 style="margin-top:1.5rem;font-size:1.1rem">Recent bills</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Bill</th>
+        <th>Date</th>
+        <th class="num">Lines</th>
+        <th class="num">Qty</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <?php foreach ($recent as $r): ?>
+        <tr>
+          <td><?= us_h((string) $r['bill_no']) ?></td>
+          <td><?= us_h((string) $r['receipt_date']) ?></td>
+          <td class="num"><?= (int) $r['line_count'] ?></td>
+          <td class="num"><?= (int) $r['qty_total'] ?></td>
+          <td class="row-actions">
+            <?php if ($canEdit): ?>
+              <a class="btn secondary" href="<?= us_h(us_url('stock_in_edit.php?id=' . (int) $r['id'])) ?>">Edit</a>
+            <?php endif; ?>
+          </td>
+        </tr>
+      <?php endforeach; ?>
+    </tbody>
+  </table>
 <?php endif; ?>
 <?php us_footer(); ?>

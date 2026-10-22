@@ -112,16 +112,6 @@ $defaultMode = $existingNames === [] ? 'new' : (($postedMode === 'new') ? 'new' 
 
 us_header('Items', $user, $company, $school);
 ?>
-<p class="lead">
-  Company <strong><?= us_h($company['name']) ?></strong> · School <strong><?= us_h($school) ?></strong>.
-  Creating an item adds that <strong>name + code + size</strong> to <strong>every company</strong> for this school only
-  (Bachpan stays with Bachpan; AHP.S with AHP.S).
-  <?php if ($canPower): ?>
-    Remove deletes that SKU from all companies for this school (blocked if any company has stock history).
-  <?php else: ?>
-    Item remove requires admin or assigned power.
-  <?php endif; ?>
-</p>
 <?php if ($error !== ''): ?>
   <div class="flash flash-error"><?= us_h($error) ?></div>
 <?php endif; ?>
@@ -172,7 +162,6 @@ us_header('Items', $user, $company, $school);
       </label>
     </div>
     <?php if ($existingNames === []): ?>
-      <p class="muted" style="margin:0.6rem 0 0;font-size:0.9rem">No names yet — create the first item name below.</p>
     <?php endif; ?>
   </fieldset>
 
@@ -202,9 +191,6 @@ us_header('Items', $user, $company, $school);
       <input id="item_no" name="item_no" required
              value="<?= us_h($_POST['item_no'] ?? '') ?>"
              placeholder="e.g. U-01">
-      <p class="muted" style="margin:0.35rem 0 0;font-size:0.9rem">
-        Saves to every company for <strong><?= us_h($school) ?></strong> only.
-      </p>
     </div>
     <div>
       <label for="size">Size</label>
@@ -213,7 +199,7 @@ us_header('Items', $user, $company, $school);
   </div>
 
   <div class="actions">
-    <button type="submit">Save item / size (all companies)</button>
+    <button type="submit">Save item</button>
     <a class="btn secondary" href="<?= us_h(us_url('stock_in.php')) ?>">Go to stock in</a>
   </div>
 </form>
@@ -243,12 +229,6 @@ us_header('Items', $user, $company, $school);
 <?php endif; ?>
 
 <h2 style="margin-top:1.75rem;font-size:1.15rem">Registered SKUs</h2>
-<p class="muted" style="margin-top:0">
-  Each row is name + item code + size for this company + school.
-  <?php if ($canPower): ?>
-    Remove deletes the same SKU from <strong>all companies</strong> for this school (blocked when any has stock history).
-  <?php endif; ?>
-</p>
 <?php if (!$skus): ?>
   <p class="muted">No items yet for this company and school.</p>
 <?php else: ?>
@@ -281,7 +261,7 @@ us_header('Items', $user, $company, $school);
                     onsubmit="return confirm('Remove this item/size from ALL companies for <?= us_h($school) ?>?');">
                 <input type="hidden" name="action" value="delete">
                 <input type="hidden" name="sku_id" value="<?= (int) $row['id'] ?>">
-                <button type="submit" class="secondary danger-btn">Remove (all cos)</button>
+                <button type="submit" class="secondary danger-btn">Remove</button>
               </form>
             <?php endif; ?>
           </td>

@@ -115,11 +115,6 @@ if ($mode === 'company_issues') {
 
 us_header('Reports', $user, $company, $school);
 ?>
-<p class="lead">
-  Company <strong><?= us_h($company['name']) ?></strong> · School <strong><?= us_h($school) ?></strong> only — Bachpan and AHP.S never mix
-  (except the company-issue report, which can show transfers across companies for a date range).
-  Each stock row is one SKU: <strong>item name + item code + size</strong>.
-</p>
 
 <div class="actions" style="margin-bottom:1rem">
   <a class="btn <?= $mode === 'lookup' ? '' : 'secondary' ?>" href="?mode=lookup">Quantity lookup</a>
@@ -175,9 +170,6 @@ us_header('Reports', $user, $company, $school);
   <?php endif; ?>
 
 <?php elseif ($mode === 'statement'): ?>
-  <p class="muted" style="margin-top:0">
-    One row per item code + size. Example: name A / size 3 and name A / size 4 are two lines, each with its own on-hand.
-  </p>
   <?php if (!$all): ?>
     <p class="muted">No stock recorded yet for this company and school.</p>
   <?php else: ?>
@@ -206,10 +198,6 @@ us_header('Reports', $user, $company, $school);
   <?php endif; ?>
 
 <?php elseif ($mode === 'company_issues'): ?>
-  <p class="muted" style="margin-top:0">
-    <strong>Issued to companies</strong> — how much was issued company → company, item-wise
-    (name, code, size), filterable by date from → to, from/to company, and school.
-  </p>
   <form method="get" class="grid grid-2" style="max-width:900px;margin-bottom:1rem">
     <input type="hidden" name="mode" value="company_issues">
     <div>
@@ -361,11 +349,6 @@ us_header('Reports', $user, $company, $school);
   <?php endif; ?>
 
 <?php else: ?>
-  <p class="muted" style="margin-top:0">
-    <strong>Qty In</strong> / <strong>Qty Out</strong> = movements with dates in the range (inclusive).
-    <strong>Balance</strong> = closing on-hand as of the <em>To</em> date (all stock in/out on or before that date).
-    Totals are per SKU (name + item code + size), not collapsed by name.
-  </p>
   <form method="get" class="grid grid-2" style="max-width:820px;margin-bottom:1rem">
     <input type="hidden" name="mode" value="movements">
     <div>

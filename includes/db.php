@@ -384,6 +384,7 @@ SQL);
     // Catalog alignment for new companies happens in us_create_company.
     // Item create uses us_create_sku_all_companies. Avoid re-syncing every request
     // so a company-local edit is not undone by other companies' SKU copies.
+    us_purge_by_school_skus_from_bachpan_hsp($pdo);
 }
 
 /** Ensure users.role / has_power exist; user_companies table ready. */
@@ -749,7 +750,8 @@ function us_create_company(PDO $pdo, string $name): int
         $stmt = $pdo->prepare('INSERT INTO companies (name) VALUES (?)');
         $stmt->execute([$name]);
         $id = (int) $pdo->lastInsertId();
-        // New company inherits the full catalog for both schools.
+        // New company inherits the full catalog for both schools
+        // (Bachpan HSP never receives By School–only items).
         us_sync_catalog_to_company($pdo, $id);
         return $id;
     } catch (PDOException $e) {
@@ -758,6 +760,41 @@ function us_create_company(PDO $pdo, string $name): int
         }
         throw $e;
     }
+}
+
+function us_rename_company(PDO $pdo, int $companyId, string $newName): void
+{
+    $newName = trim($newName);
+    if ($newName === '') {
+        throw new RuntimeException('Company name is required.');
+    }
+    if (us_is_reserved_school_name($newName)) {
+        throw new RuntimeException(
+            '"' . $newName . '" is a school, not a company.'
+        );
+    }
+    $company = us_get_company($pdo, $companyId);
+    if (!$company) {
+        throw new RuntimeException('Company not found.');
+    }
+    if (us_company_name_equals((string) $company['name'], $newName)) {
+        // Same name (case/spacing only) — still allow exact rename for casing cleanup.
+        if (trim((string) $company['name']) === $newName) {
+            return;
+        }
+    }
+    try {
+        $stmt = $pdo->prepare('UPDATE companies SET name = ? WHERE id = ?');
+        $stmt->execute([$newName, $companyId]);
+    } catch (PDOException $e) {
+        if (str_contains($e->getMessage(), 'UNIQUE')) {
+            throw new RuntimeException('A company with that name already exists.');
+        }
+        throw $e;
+    }
+    // After rename, heal catalog rules (e.g. newly named Bachpan HSP).
+    us_purge_by_school_skus_from_bachpan_hsp($pdo);
+    us_sync_catalog_to_company($pdo, $companyId);
 }
 
 /**
@@ -1061,6 +1098,12 @@ function us_create_sku_all_companies(
         );
     }
 
+    $source = us_get_company($pdo, $companyId);
+    if (!$source) {
+        throw new RuntimeException('Company not found.');
+    }
+    $sourceName = (string) $source['name'];
+
     $companies = us_list_companies($pdo);
     if ($companies === []) {
         throw new RuntimeException('Create a company first.');
@@ -1068,10 +1111,16 @@ function us_create_sku_all_companies(
 
     $created = 0;
     $activeSkuId = 0;
+    $targets = 0;
     $pdo->beginTransaction();
     try {
         foreach ($companies as $c) {
             $cid = (int) $c['id'];
+            $targetName = (string) $c['name'];
+            if (us_catalog_skip_target($sourceName, $targetName)) {
+                continue;
+            }
+            $targets++;
             $before = us_find_sku_id($pdo, $cid, $school, $itemName, $itemNo, $size);
             $skuId = us_ensure_sku($pdo, $cid, $school, $itemNo, $itemName, $size);
             if ($before === null) {
@@ -1080,6 +1129,10 @@ function us_create_sku_all_companies(
             if ($cid === $companyId) {
                 $activeSkuId = $skuId;
             }
+        }
+        // Always ensure the active company has the SKU even if somehow skipped.
+        if ($activeSkuId <= 0) {
+            $activeSkuId = us_ensure_sku($pdo, $companyId, $school, $itemNo, $itemName, $size);
         }
         $pdo->commit();
     } catch (Throwable $e) {
@@ -1092,7 +1145,7 @@ function us_create_sku_all_companies(
     return [
         'sku_id' => $activeSkuId,
         'created_count' => $created,
-        'company_count' => count($companies),
+        'company_count' => $targets,
     ];
 }
 
@@ -1101,8 +1154,21 @@ function us_create_sku_all_companies(
  *
  * @return list<array{school:string,item_name:string,item_no:string,size:string}>
  */
-function us_catalog_blueprint(PDO $pdo): array
+function us_catalog_blueprint(PDO $pdo, bool $excludeBySchoolOnly = false): array
 {
+    if ($excludeBySchoolOnly) {
+        // SKUs present in at least one company that is not "By School".
+        $stmt = $pdo->prepare(
+            "SELECT DISTINCT s.school, s.item_name, s.item_no, s.size
+             FROM skus s
+             INNER JOIN companies c ON c.id = s.company_id
+             WHERE s.school IN ('Bachpan', 'AHP.S')
+               AND LOWER(TRIM(c.name)) != LOWER(?)
+             ORDER BY s.school, s.item_name COLLATE NOCASE, s.item_no COLLATE NOCASE, s.size COLLATE NOCASE"
+        );
+        $stmt->execute([trim(US_CATALOG_COMPANY_BY_SCHOOL)]);
+        return $stmt->fetchAll();
+    }
     return $pdo->query(
         "SELECT DISTINCT school, item_name, item_no, size
          FROM skus
@@ -1114,11 +1180,14 @@ function us_catalog_blueprint(PDO $pdo): array
 /** Copy missing catalog SKUs into one company for both schools. */
 function us_sync_catalog_to_company(PDO $pdo, int $companyId): int
 {
-    if (!us_get_company($pdo, $companyId)) {
+    $company = us_get_company($pdo, $companyId);
+    if (!$company) {
         return 0;
     }
+    // Bachpan HSP must not receive items that exist only under By School.
+    $excludeBySchool = us_is_bachpan_hsp_company((string) $company['name']);
     $added = 0;
-    foreach (us_catalog_blueprint($pdo) as $row) {
+    foreach (us_catalog_blueprint($pdo, $excludeBySchool) as $row) {
         $school = (string) $row['school'];
         if (!us_is_valid_school($school)) {
             continue;
@@ -1146,6 +1215,74 @@ function us_sync_catalog_to_company(PDO $pdo, int $companyId): int
     return $added;
 }
 
+/**
+ * Remove unused By School–only SKUs from Bachpan HSP so they stay invisible.
+ * Keeps rows that have stock history (cannot silently delete movements).
+ */
+function us_purge_by_school_skus_from_bachpan_hsp(PDO $pdo): void
+{
+    if (!us_table_exists($pdo, 'skus') || !us_table_exists($pdo, 'companies')) {
+        return;
+    }
+    $hsp = null;
+    $bySchoolId = null;
+    foreach (us_list_companies($pdo) as $c) {
+        if (us_is_bachpan_hsp_company((string) $c['name'])) {
+            $hsp = (int) $c['id'];
+        }
+        if (us_is_by_school_company((string) $c['name'])) {
+            $bySchoolId = (int) $c['id'];
+        }
+    }
+    if ($hsp === null || $bySchoolId === null) {
+        return;
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT id, school, item_name, item_no, size FROM skus WHERE company_id = ?'
+    );
+    $stmt->execute([$hsp]);
+    $del = $pdo->prepare('DELETE FROM skus WHERE id = ?');
+    foreach ($stmt->fetchAll() as $sku) {
+        $skuId = (int) $sku['id'];
+        if (us_sku_has_movements($pdo, $skuId)) {
+            continue;
+        }
+        // Present under By School?
+        $inBySchool = us_find_sku_id(
+            $pdo,
+            $bySchoolId,
+            (string) $sku['school'],
+            (string) $sku['item_name'],
+            (string) $sku['item_no'],
+            (string) $sku['size']
+        );
+        if ($inBySchool === null) {
+            continue;
+        }
+        // Also present in any non–By School / non–Bachpan HSP company?
+        $elsewhere = $pdo->prepare(
+            "SELECT 1 FROM skus s
+             INNER JOIN companies c ON c.id = s.company_id
+             WHERE s.school = ? AND s.item_name = ? AND s.item_no = ? AND s.size = ?
+               AND s.company_id NOT IN (?, ?)
+             LIMIT 1"
+        );
+        $elsewhere->execute([
+            (string) $sku['school'],
+            (string) $sku['item_name'],
+            (string) $sku['item_no'],
+            (string) $sku['size'],
+            $bySchoolId,
+            $hsp,
+        ]);
+        if ($elsewhere->fetchColumn()) {
+            continue; // shared catalog item — keep on Bachpan HSP
+        }
+        $del->execute([$skuId]);
+    }
+}
+
 /** Align every company's catalog to the union of all SKUs (both schools). */
 function us_sync_all_company_catalogs(PDO $pdo): void
 {
@@ -1156,6 +1293,7 @@ function us_sync_all_company_catalogs(PDO $pdo): void
     if (!in_array('school', $cols, true)) {
         return;
     }
+    us_purge_by_school_skus_from_bachpan_hsp($pdo);
     foreach (us_list_companies($pdo) as $c) {
         us_sync_catalog_to_company($pdo, (int) $c['id']);
     }
@@ -1568,6 +1706,297 @@ function us_get_sku(
     }
     $row = $stmt->fetch();
     return $row ?: null;
+}
+
+/** @return list<array{id:int,bill_no:string,receipt_date:string,created_at:string,line_count:int,qty_total:int}> */
+function us_list_receipts(PDO $pdo, int $companyId, string $school, int $limit = 40): array
+{
+    $limit = max(1, min(200, $limit));
+    $stmt = $pdo->prepare(
+        "SELECT r.id, r.bill_no, r.receipt_date, r.created_at,
+                COUNT(rl.id) AS line_count,
+                COALESCE(SUM(rl.quantity), 0) AS qty_total
+         FROM receipts r
+         LEFT JOIN receipt_lines rl ON rl.receipt_id = r.id
+         WHERE r.company_id = ? AND r.school = ?
+         GROUP BY r.id
+         ORDER BY r.receipt_date DESC, r.id DESC
+         LIMIT {$limit}"
+    );
+    $stmt->execute([$companyId, $school]);
+    return $stmt->fetchAll();
+}
+
+function us_get_receipt(PDO $pdo, int $receiptId, int $companyId, string $school): ?array
+{
+    $stmt = $pdo->prepare(
+        'SELECT id, company_id, school, bill_no, receipt_date, created_at
+         FROM receipts WHERE id = ? AND company_id = ? AND school = ?'
+    );
+    $stmt->execute([$receiptId, $companyId, $school]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+/** @return list<array{id:int,sku_id:int,quantity:int,item_name:string,item_no:string,size:string}> */
+function us_get_receipt_lines(PDO $pdo, int $receiptId): array
+{
+    $stmt = $pdo->prepare(
+        'SELECT rl.id, rl.sku_id, rl.quantity, s.item_name, s.item_no, s.size
+         FROM receipt_lines rl
+         INNER JOIN skus s ON s.id = rl.sku_id
+         WHERE rl.receipt_id = ?
+         ORDER BY s.item_name COLLATE NOCASE, s.item_no COLLATE NOCASE, s.size COLLATE NOCASE'
+    );
+    $stmt->execute([$receiptId]);
+    return $stmt->fetchAll();
+}
+
+/**
+ * Replace a receipt's bill/date/lines. $lines = list of [sku_id, qty].
+ *
+ * @param list<array{sku_id:int,qty:int}> $lines
+ */
+function us_update_receipt(
+    PDO $pdo,
+    int $companyId,
+    string $school,
+    int $receiptId,
+    string $billNo,
+    string $receiptDate,
+    array $lines
+): void {
+    $billNo = trim($billNo);
+    if ($billNo === '') {
+        throw new RuntimeException('Bill number is required.');
+    }
+    if ($receiptDate === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $receiptDate)) {
+        throw new RuntimeException('A valid receipt date is required.');
+    }
+    $receipt = us_get_receipt($pdo, $receiptId, $companyId, $school);
+    if (!$receipt) {
+        throw new RuntimeException('Stock-in bill not found.');
+    }
+    if ($lines === []) {
+        throw new RuntimeException('Enter quantity for at least one line.');
+    }
+    foreach ($lines as $line) {
+        if ((int) $line['sku_id'] <= 0 || (int) $line['qty'] < 1) {
+            throw new RuntimeException('Each line needs an item and quantity ≥ 1.');
+        }
+        if (!us_get_sku($pdo, (int) $line['sku_id'], $companyId, $school)) {
+            throw new RuntimeException('One or more items are not in this company and school.');
+        }
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $upd = $pdo->prepare(
+            'UPDATE receipts SET bill_no = ?, receipt_date = ? WHERE id = ? AND company_id = ? AND school = ?'
+        );
+        $upd->execute([$billNo, $receiptDate, $receiptId, $companyId, $school]);
+        $pdo->prepare('DELETE FROM receipt_lines WHERE receipt_id = ?')->execute([$receiptId]);
+        $ins = $pdo->prepare(
+            'INSERT INTO receipt_lines (receipt_id, sku_id, quantity) VALUES (?, ?, ?)'
+        );
+        foreach ($lines as $line) {
+            $ins->execute([$receiptId, (int) $line['sku_id'], (int) $line['qty']]);
+        }
+        $pdo->commit();
+    } catch (PDOException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        if (str_contains($e->getMessage(), 'UNIQUE')) {
+            throw new RuntimeException('Bill number already exists for this company and school.');
+        }
+        throw $e;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
+
+function us_delete_receipt(PDO $pdo, int $companyId, string $school, int $receiptId): void
+{
+    $receipt = us_get_receipt($pdo, $receiptId, $companyId, $school);
+    if (!$receipt) {
+        throw new RuntimeException('Stock-in bill not found.');
+    }
+    // Block delete if this receipt was created by a company transfer credit.
+    $xfer = $pdo->prepare('SELECT 1 FROM company_transfers WHERE to_receipt_id = ? LIMIT 1');
+    $xfer->execute([$receiptId]);
+    if ($xfer->fetchColumn()) {
+        throw new RuntimeException(
+            'This bill came from Issue to company — delete the transfer from the source company instead.'
+        );
+    }
+    $pdo->beginTransaction();
+    try {
+        $pdo->prepare('DELETE FROM receipt_lines WHERE receipt_id = ?')->execute([$receiptId]);
+        $pdo->prepare(
+            'DELETE FROM receipts WHERE id = ? AND company_id = ? AND school = ?'
+        )->execute([$receiptId, $companyId, $school]);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
+
+/** @return list<array{id:int,issue_date:string,created_at:string,line_count:int,qty_total:int}> */
+function us_list_issues(PDO $pdo, int $companyId, string $school, int $limit = 40): array
+{
+    $limit = max(1, min(200, $limit));
+    $stmt = $pdo->prepare(
+        "SELECT i.id, i.issue_date, i.created_at,
+                COUNT(il.id) AS line_count,
+                COALESCE(SUM(il.quantity), 0) AS qty_total
+         FROM issues i
+         LEFT JOIN issue_lines il ON il.issue_id = i.id
+         WHERE i.company_id = ? AND i.school = ?
+         GROUP BY i.id
+         ORDER BY i.issue_date DESC, i.id DESC
+         LIMIT {$limit}"
+    );
+    $stmt->execute([$companyId, $school]);
+    return $stmt->fetchAll();
+}
+
+function us_get_issue(PDO $pdo, int $issueId, int $companyId, string $school): ?array
+{
+    $stmt = $pdo->prepare(
+        'SELECT id, company_id, school, issue_date, created_at
+         FROM issues WHERE id = ? AND company_id = ? AND school = ?'
+    );
+    $stmt->execute([$issueId, $companyId, $school]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+/** @return list<array{id:int,sku_id:int,quantity:int,item_name:string,item_no:string,size:string}> */
+function us_get_issue_lines(PDO $pdo, int $issueId): array
+{
+    $stmt = $pdo->prepare(
+        'SELECT il.id, il.sku_id, il.quantity, s.item_name, s.item_no, s.size
+         FROM issue_lines il
+         INNER JOIN skus s ON s.id = il.sku_id
+         WHERE il.issue_id = ?
+         ORDER BY s.item_name COLLATE NOCASE, s.item_no COLLATE NOCASE, s.size COLLATE NOCASE'
+    );
+    $stmt->execute([$issueId]);
+    return $stmt->fetchAll();
+}
+
+/** On-hand available when editing an issue (current on-hand + qty already on this issue for the SKU). */
+function us_on_hand_for_issue_edit(PDO $pdo, int $skuId, int $issueId): int
+{
+    $base = us_on_hand($pdo, $skuId);
+    $stmt = $pdo->prepare(
+        'SELECT COALESCE(SUM(quantity), 0) FROM issue_lines WHERE issue_id = ? AND sku_id = ?'
+    );
+    $stmt->execute([$issueId, $skuId]);
+    return $base + (int) $stmt->fetchColumn();
+}
+
+/**
+ * @param list<array{sku_id:int,qty:int}> $lines
+ */
+function us_update_issue(
+    PDO $pdo,
+    int $companyId,
+    string $school,
+    int $issueId,
+    string $issueDate,
+    array $lines
+): void {
+    if ($issueDate === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $issueDate)) {
+        throw new RuntimeException('A valid issue date is required.');
+    }
+    $issue = us_get_issue($pdo, $issueId, $companyId, $school);
+    if (!$issue) {
+        throw new RuntimeException('Stock-out entry not found.');
+    }
+    $xfer = $pdo->prepare('SELECT 1 FROM company_transfers WHERE from_issue_id = ? LIMIT 1');
+    $xfer->execute([$issueId]);
+    if ($xfer->fetchColumn()) {
+        throw new RuntimeException(
+            'This stock-out is from Issue to company — edit/delete that transfer instead.'
+        );
+    }
+    if ($lines === []) {
+        throw new RuntimeException('Add at least one issue line.');
+    }
+    foreach ($lines as $line) {
+        $skuId = (int) $line['sku_id'];
+        $qty = (int) $line['qty'];
+        if ($skuId <= 0 || $qty < 1) {
+            throw new RuntimeException('Each line needs an item and quantity ≥ 1.');
+        }
+        if (!us_get_sku($pdo, $skuId, $companyId, $school)) {
+            throw new RuntimeException('One or more items are not in this company and school.');
+        }
+        $avail = us_on_hand_for_issue_edit($pdo, $skuId, $issueId);
+        if ($qty > $avail) {
+            $sku = us_get_sku($pdo, $skuId, $companyId, $school) ?: ['item_name' => '?', 'item_no' => '?', 'size' => '?'];
+            throw new RuntimeException(
+                'Cannot issue ' . $qty . ' of ' . $sku['item_name'] . ' / ' . $sku['item_no'] . ' / ' . $sku['size']
+                . ' — only ' . $avail . ' available.'
+            );
+        }
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $pdo->prepare(
+            'UPDATE issues SET issue_date = ? WHERE id = ? AND company_id = ? AND school = ?'
+        )->execute([$issueDate, $issueId, $companyId, $school]);
+        $pdo->prepare('DELETE FROM issue_lines WHERE issue_id = ?')->execute([$issueId]);
+        $ins = $pdo->prepare(
+            'INSERT INTO issue_lines (issue_id, sku_id, quantity) VALUES (?, ?, ?)'
+        );
+        foreach ($lines as $line) {
+            $ins->execute([$issueId, (int) $line['sku_id'], (int) $line['qty']]);
+        }
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
+
+function us_delete_issue(PDO $pdo, int $companyId, string $school, int $issueId): void
+{
+    $issue = us_get_issue($pdo, $issueId, $companyId, $school);
+    if (!$issue) {
+        throw new RuntimeException('Stock-out entry not found.');
+    }
+    $xfer = $pdo->prepare('SELECT 1 FROM company_transfers WHERE from_issue_id = ? LIMIT 1');
+    $xfer->execute([$issueId]);
+    if ($xfer->fetchColumn()) {
+        throw new RuntimeException(
+            'This stock-out is from Issue to company — cannot delete here.'
+        );
+    }
+    $pdo->beginTransaction();
+    try {
+        $pdo->prepare('DELETE FROM issue_lines WHERE issue_id = ?')->execute([$issueId]);
+        $pdo->prepare(
+            'DELETE FROM issues WHERE id = ? AND company_id = ? AND school = ?'
+        )->execute([$issueId, $companyId, $school]);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
 }
 
 function us_get_user(PDO $pdo, int $userId): ?array

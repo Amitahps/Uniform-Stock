@@ -43,11 +43,6 @@ $deficit = array_values(array_filter($rows, static fn(array $r): bool => (int) $
 
 us_header('Deficit', $user, $company, $school);
 ?>
-<p class="lead">
-  Company <strong><?= us_h($company['name']) ?></strong> · School <strong><?= us_h($school) ?></strong> only.
-  SKUs with on-hand quantity &lt; <?= (int) US_DEFICIT_THRESHOLD ?>.
-  Filter by name+code or size (same code on different names stays separate).
-</p>
 
 <form method="get" class="grid grid-2" style="margin-bottom:1rem">
   <div>

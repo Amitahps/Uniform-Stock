@@ -92,22 +92,17 @@ foreach ($stock as $row) {
     $onHandById[(int) $row['id']] = (int) $row['on_hand'];
 }
 
+$canEdit = us_has_power($user);
+$recent = us_list_issues($pdo, $companyId, $school);
+
 us_header('Stock out', $user, $company, $school);
 ?>
-<p class="lead">
-  Company <strong><?= us_h($company['name']) ?></strong> · School <strong><?= us_h($school) ?></strong>.
-  <strong>Stock out</strong> = normal issue (customers / use). Deducts on-hand; oversell is blocked.
-  <?php if (us_has_power($user)): ?>
-    To move stock to another company, use
-    <a href="<?= us_h(us_url('issue_company.php')) ?>"><strong>Issue to company</strong></a> instead.
-  <?php endif; ?>
-</p>
 <?php if ($error !== ''): ?>
   <div class="flash flash-error"><?= us_h($error) ?></div>
 <?php endif; ?>
 
 <?php if (!$stock): ?>
-  <p class="muted">No stock yet. <a href="<?= us_h(us_url('items.php')) ?>">Add items</a> and <a href="<?= us_h(us_url('stock_in.php')) ?>">receive a bill</a> first.</p>
+  <p class="muted">No stock. <a href="<?= us_h(us_url('stock_in.php')) ?>">Stock in</a></p>
 <?php else: ?>
 <form method="post" id="stock_out_form">
   <div style="max-width:280px">
@@ -238,5 +233,33 @@ us_header('Stock out', $user, $company, $school);
   });
 })();
 </script>
+<?php endif; ?>
+
+<?php if ($recent): ?>
+  <h2 style="margin-top:1.5rem;font-size:1.1rem">Recent stock out</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th class="num">Lines</th>
+        <th class="num">Qty</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <?php foreach ($recent as $r): ?>
+        <tr>
+          <td><?= us_h((string) $r['issue_date']) ?></td>
+          <td class="num"><?= (int) $r['line_count'] ?></td>
+          <td class="num"><?= (int) $r['qty_total'] ?></td>
+          <td class="row-actions">
+            <?php if ($canEdit): ?>
+              <a class="btn secondary" href="<?= us_h(us_url('stock_out_edit.php?id=' . (int) $r['id'])) ?>">Edit</a>
+            <?php endif; ?>
+          </td>
+        </tr>
+      <?php endforeach; ?>
+    </tbody>
+  </table>
 <?php endif; ?>
 <?php us_footer(); ?>

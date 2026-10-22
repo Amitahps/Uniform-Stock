@@ -97,15 +97,6 @@ $school = us_current_school();
 
 us_header('Users', $user, $company, $school);
 ?>
-<div class="flash flash-ok" style="margin-bottom:1rem">
-  <strong>Staff users</strong> — create a username + password, tick companies, optionally assign
-  <strong>Power</strong> (can remove items from all companies + Issue to company + company-issue report).
-  Staff without power still do Items / Stock in / Stock out / Reports / Deficit for assigned companies.
-  Staff never see: Companies, Users, Backup, Password.
-</div>
-<p class="lead">
-  Admin-only page. Reset a lost staff password with <strong>Edit → Set new password</strong>.
-</p>
 <?php if ($error !== ''): ?>
   <div class="flash flash-error"><?= us_h($error) ?></div>
 <?php endif; ?>
@@ -135,10 +126,7 @@ us_header('Users', $user, $company, $school);
       <label class="assign-row">
         <input type="checkbox" name="has_power" value="1"
           <?= (int) ($editUser['has_power'] ?? 0) === 1 ? 'checked' : '' ?>>
-        <span>
-          <strong>Assign power</strong> — may remove items from all companies (active school),
-          Issue stock to another company, and view the company-issue report.
-        </span>
+<span><strong>Power</strong> (remove items · issue to company · issue report)</span>
       </label>
     </fieldset>
     <div class="actions">
@@ -203,7 +191,7 @@ us_header('Users', $user, $company, $school);
         <label class="assign-row">
           <input type="checkbox" name="has_power" value="1"
             <?= !empty($_POST['has_power']) ? 'checked' : '' ?>>
-          <span>Assign power (global item remove + issue to company + issue report)</span>
+          <span>Power</span>
         </label>
       </fieldset>
       <div class="actions">

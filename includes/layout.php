@@ -49,8 +49,8 @@ function us_header(string $title, ?array $user = null, ?array $company = null, ?
 
     // School switcher FIRST (very top) whenever a company is selected — hard to miss.
     if ($user && $company) {
-        echo '<div class="school-bar" role="tablist" aria-label="Choose school">';
-        echo '<div class="school-bar-title">Choose school for <strong>' . us_h($company['name']) . '</strong></div>';
+        echo '<div class="school-bar" role="tablist" aria-label="School">';
+        echo '<div class="school-bar-title">' . us_h($company['name']) . '</div>';
         echo '<div class="school-bar-buttons">';
         foreach (us_schools() as $s) {
             $active = ($school === $s);
@@ -64,11 +64,6 @@ function us_header(string $title, ?array $user = null, ?array $company = null, ?
             echo '</a>';
         }
         echo '</div>';
-        if ($school === null) {
-            echo '<p class="school-bar-hint">Tap <strong>Bachpan</strong> or <strong>AHP.S</strong> to continue with Items / Stock / Reports.</p>';
-        } else {
-            echo '<p class="school-bar-hint">Active school: <strong>' . us_h($school) . '</strong> — tap the other button to switch.</p>';
-        }
         echo '</div>';
     }
 

@@ -42,9 +42,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 us_header('Login');
 ?>
-<p class="lead">
-  Sign in as <strong>admin</strong> or as a <strong>staff</strong> user created under Users.
-</p>
 <?php if ($error !== ''): ?>
   <div class="flash flash-error"><?= us_h($error) ?></div>
 <?php endif; ?>
@@ -61,6 +58,5 @@ us_header('Login');
   <div class="actions">
     <button type="submit">Sign in</button>
   </div>
-  <p class="muted">Default admin: <code>admin</code> / <code>admin123</code> (change under Password). Staff usernames are created by admin on the Users page.</p>
 </form>
 <?php us_footer(); ?>

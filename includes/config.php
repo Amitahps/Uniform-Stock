@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 define('US_APP_NAME', 'Uniform Stock');
 /** Bump when shipping UI/feature changes — shown on check.php + footer to verify Hostinger deploy. */
-define('US_APP_VERSION', '20261022-xfer-v4');
+define('US_APP_VERSION', '20261022-ui-v5');
 define('US_SESSION_NAME', 'uniform_stock_sess');
 define('US_DEFICIT_THRESHOLD', 5);
 define('US_DEFAULT_USER', 'admin');
@@ -14,6 +14,13 @@ define('US_DB_PATH', US_DATA_DIR . '/stock.db');
 /** Fixed schools every company stocks for (not company rows). */
 define('US_SCHOOL_BACHPAN', 'Bachpan');
 define('US_SCHOOL_AHPS', 'AHP.S');
+
+/**
+ * Catalog visibility exception (case-insensitive, trimmed):
+ * Items created under "By School" are not auto-added / visible to "Bachpan HSP".
+ */
+define('US_CATALOG_COMPANY_BY_SCHOOL', 'By School');
+define('US_CATALOG_COMPANY_BACHPAN_HSP', 'Bachpan HSP');
 
 require_once __DIR__ . '/paths.php';
 
@@ -37,6 +44,32 @@ function us_is_reserved_school_name(string $name): bool
         }
     }
     return false;
+}
+
+function us_norm_company_name(string $name): string
+{
+    return strtolower(trim($name));
+}
+
+function us_company_name_equals(string $name, string $expected): bool
+{
+    return us_norm_company_name($name) === us_norm_company_name($expected);
+}
+
+function us_is_by_school_company(string $name): bool
+{
+    return us_company_name_equals($name, US_CATALOG_COMPANY_BY_SCHOOL);
+}
+
+function us_is_bachpan_hsp_company(string $name): bool
+{
+    return us_company_name_equals($name, US_CATALOG_COMPANY_BACHPAN_HSP);
+}
+
+/** True when catalog from $sourceName must not be pushed to $targetName. */
+function us_catalog_skip_target(string $sourceName, string $targetName): bool
+{
+    return us_is_by_school_company($sourceName) && us_is_bachpan_hsp_company($targetName);
 }
 
 /** Encode name+code for filter selects (codes may repeat across names). */

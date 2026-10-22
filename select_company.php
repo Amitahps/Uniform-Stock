@@ -36,9 +36,6 @@ $school = us_current_school();
 
 us_header('Select company', $user, $current, $school);
 ?>
-<p class="lead">
-  Choose a company you are assigned to. Then use the <strong>Bachpan</strong> / <strong>AHP.S</strong> tabs at the top to pick a school.
-</p>
 <?php if ($error !== ''): ?>
   <div class="flash flash-error"><?= us_h($error) ?></div>
 <?php endif; ?>
