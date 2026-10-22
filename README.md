@@ -7,7 +7,7 @@ PHP + SQLite stock inventory for a school uniform vendor. **Separate website** f
 - **Companies** — create a company name, then select it. Items, stock in/out, on-hand, reports, and deficit are **scoped to the selected company** (stock is never mixed across companies). **Remove company** requires typing the name and re-entering the admin password; that company’s items and stock history are permanently deleted (other companies untouched).
 - **Login** — session auth; default `admin` / `admin123` (change under Password)
 - **Items** — **Use existing item name** (dropdown) → type **item code** → type **size**; or **Create new item name** (name + code + size). Same name may use different codes/sizes. Duplicate code+size is rejected with a clear error. Uniqueness is **company + item code + size** only. **Edit** anytime. **Delete** only if unused.
-- **Stock in** — bill number + multiple lines in one save. Each line: item name (read-only) → **select item code** → size auto-fills (or choose if several) → enter **quantity only**. Names may repeat across codes in the list.
+- **Stock in** — enter **bill number** (and date) once at the top. Add **item name** blocks: select a name → all its codes/sizes appear as rows → fill qty per row (blank/0 skipped). Add more item blocks under the same bill. **One Save** writes the whole bill. Duplicate SKU lines are summed. Company-scoped.
 - **Stock out** — issue date + quantities; deducts on-hand; blocks oversell
 - **Reports** — quantity lookup; item-wise statement; **date-range movements** (Qty In / Qty Out in range, Balance = closing on-hand as of the To date). Every report row is one SKU: **name + item code + size** with its own figures — sizes (and codes) under the same name are never merged. Optional filter by item code. Current company only.
 - **Deficit** — SKUs with quantity &lt; 5; filters: all / by item / by size (current company)
@@ -18,7 +18,7 @@ SKU identity is **company + item code + size** (DB column `item_no`). Item **nam
 
 1. **Companies** → create company → select it  
 2. **Items** → add item name / item code / size (edit or delete unused SKUs later)  
-3. **Stock in** → bill no → select name → code → size → qty → save (multi-line OK)  
+3. **Stock in** → bill no + date → Add item name → fill qtys for codes/sizes → add more names if needed → **Save bill** once  
 4. Stock out / Reports / Deficit as needed  
 
 ## Requirements
