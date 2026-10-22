@@ -44,24 +44,50 @@ a:hover { text-decoration: underline; }
   background: #e7f6ef; border: 1px solid #b7e0cb; border-radius: 999px;
   padding: 0.15rem 0.55rem; font-size: 0.85rem;
 }
-.school-tabs {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.65rem;
-  margin: 0 0 1rem; padding: 0.65rem 0.85rem;
-  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+/* Large school switcher — top of every logged-in page when a company is selected */
+.school-bar {
+  margin: 0 0 1rem;
+  padding: 1rem 1.1rem 1.1rem;
+  background: linear-gradient(180deg, #e7f6ef 0%, #fffdf8 100%);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
 }
-.school-tabs-label {
-  font-weight: 700; color: var(--muted); margin-right: 0.25rem; font-size: 0.9rem;
+.school-bar-title {
+  font-size: 1.05rem; font-weight: 800; margin: 0 0 0.75rem; color: var(--ink);
+}
+.school-bar-buttons {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;
 }
 .school-tab {
-  display: inline-block; font-weight: 700; padding: 0.45rem 1rem;
-  border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink);
-  text-decoration: none;
+  display: flex; align-items: center; justify-content: center; gap: 0.4rem;
+  font-weight: 800; font-size: 1.35rem; line-height: 1.2;
+  padding: 1.1rem 1rem; min-height: 3.5rem;
+  border: 2px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink);
+  text-decoration: none; text-align: center;
 }
-.school-tab:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+.school-tab:hover {
+  border-color: var(--accent); color: var(--accent); text-decoration: none;
+  background: #f3faf6;
+}
 .school-tab.is-active {
   background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
 }
-.school-tabs-hint { font-size: 0.9rem; margin-left: 0.35rem; }
+.school-tab-check { font-size: 1.1rem; }
+.school-bar-hint { margin: 0.75rem 0 0; font-size: 0.95rem; color: var(--muted); }
+.school-bar-hint strong { color: var(--ink); }
+@media (max-width: 520px) {
+  .school-bar-buttons { grid-template-columns: 1fr; }
+  .school-tab { font-size: 1.2rem; }
+}
+button.school-tab-btn {
+  width: 100%; font-size: 1.35rem; font-weight: 800; min-height: 3.5rem;
+  padding: 1.1rem 1rem; border-radius: 12px; border-width: 2px;
+}
+button.school-tab-btn.is-active {
+  background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
+}
+.app-version { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .row-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
 .danger-btn { color: var(--danger) !important; border-color: #f0c2c2 !important; }
 

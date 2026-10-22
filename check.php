@@ -48,6 +48,21 @@ $ok('Foreign keys enabled after migrate', $fkOk, $fkDetail);
 $cssPath = __DIR__ . '/assets/style.css';
 $ok('assets/style.css present', is_file($cssPath), us_url('assets/style.css'));
 
+$featureFiles = [
+    'users.php' => 'Users (staff admin)',
+    'switch_school.php' => 'School switcher',
+    'select_company.php' => 'Staff company picker',
+    'includes/layout.php' => 'Layout / school bar',
+];
+foreach ($featureFiles as $rel => $label) {
+    $path = __DIR__ . '/' . $rel;
+    $ok($label . ' file present', is_file($path), $rel);
+}
+$cssBody = is_file($cssPath) ? (string) file_get_contents($cssPath) : '';
+$ok('School bar CSS (.school-bar) present', str_contains($cssBody, '.school-bar'), 'assets/style.css');
+$layoutBody = is_file(__DIR__ . '/includes/layout.php') ? (string) file_get_contents(__DIR__ . '/includes/layout.php') : '';
+$ok('School bar markup in layout', str_contains($layoutBody, 'school-bar'), 'includes/layout.php');
+
 $allPass = true;
 foreach ($checks as $c) {
     if (!$c['pass']) {
@@ -74,7 +89,14 @@ foreach ($checks as $c) {
   <div class="wrap">
     <main class="main">
       <h1>Environment check</h1>
-      <p class="lead"><?= $allPass ? 'Ready for Hostinger deploy.' : 'Fix the failing checks below.' ?></p>
+      <p class="lead">
+        App version: <strong class="app-version"><?= htmlspecialchars(US_APP_VERSION, ENT_QUOTES, 'UTF-8') ?></strong>
+        <?php if ($allPass): ?>
+          — Ready for Hostinger. If the live site looks old, Redeploy <code>main</code> and hard-refresh (Ctrl+F5).
+        <?php else: ?>
+          — Fix the failing checks below (missing files often mean Hostinger Git is stale).
+        <?php endif; ?>
+      </p>
       <ul class="checks">
         <?php foreach ($checks as $c): ?>
           <li class="<?= $c['pass'] ? 'ok' : 'bad' ?>">
@@ -96,7 +118,19 @@ foreach ($checks as $c) {
           <p style="margin:0.6rem 0 0">Do not delete files from school-fee-erp or Badminton.</p>
         </div>
       <?php endif; ?>
+      <div class="flash flash-warn" style="margin-top:1rem;padding:0.85rem 1rem;border:1px solid #f0d9a0;background:#fff6e5;border-radius:10px;color:#8a5a00">
+        <strong>Hostinger Redeploy (if UI looks unchanged)</strong>
+        <ol style="margin:0.5rem 0 0;padding-left:1.2rem">
+          <li>Hostinger → this Uniform-Stock website → <strong>Git</strong> (or Deployments).</li>
+          <li>Confirm branch is <code>main</code> and repo is <code>Amitahps/Uniform-Stock</code> (not ERP/Badminton).</li>
+          <li>Click <strong>Redeploy</strong> / Deploy and wait until files finish syncing.</li>
+          <li>In File Manager, confirm <code>users.php</code>, <code>switch_school.php</code>, and <code>includes/layout.php</code> exist in <code>public_html</code>.</li>
+          <li>Reload <code>/check.php</code> — version must show <code><?= htmlspecialchars(US_APP_VERSION, ENT_QUOTES, 'UTF-8') ?></code> and school-bar checks OK.</li>
+          <li>Login → select a company → large <strong>Bachpan</strong> | <strong>AHP.S</strong> buttons appear at the very top. Hard-refresh (Ctrl+F5) if CSS looks old.</li>
+        </ol>
+      </div>
       <p><a href="<?= htmlspecialchars(us_url('login.php'), ENT_QUOTES, 'UTF-8') ?>">Go to login</a></p>
+      <p class="muted" style="margin-top:1rem;font-size:0.9rem">Footer on logged-in pages also shows <code>app <?= htmlspecialchars(US_APP_VERSION, ENT_QUOTES, 'UTF-8') ?></code>.</p>
     </main>
   </div>
 </body>

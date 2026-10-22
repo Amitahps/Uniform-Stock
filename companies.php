@@ -164,24 +164,21 @@ us_header('Companies', $user, $current, $currentSchool);
 </section>
 
 <?php if ($current): ?>
-<section style="margin-top:1.75rem;padding:1.1rem;border:1px solid var(--line);border-radius:12px;background:#fff">
-  <h2 style="font-size:1.15rem;margin:0 0 0.5rem">School for <?= us_h($current['name']) ?></h2>
-  <p class="muted" style="margin:0 0 1rem">
-    This company maintains stock for both schools. Choose one to view and edit that school’s items and stock only.
-  </p>
+<section class="school-bar" style="margin-top:1.5rem">
+  <div class="school-bar-title">School for <?= us_h($current['name']) ?> — also use the big buttons at the very top of every page</div>
   <?php if ($currentSchool === null): ?>
-    <div class="flash flash-warn" style="margin-bottom:1rem">
+    <div class="flash flash-warn" style="margin-bottom:0.75rem">
       Choose <strong>Bachpan</strong> or <strong>AHP.S</strong> before Items / Stock in / Stock out / Reports / Deficit.
     </div>
   <?php endif; ?>
-  <form method="post" class="actions" style="margin:0">
+  <form method="post" class="school-bar-buttons" style="margin:0">
     <input type="hidden" name="action" value="select_school">
     <?php foreach (us_schools() as $school): ?>
       <button
         type="submit"
         name="school"
         value="<?= us_h($school) ?>"
-        class="<?= $currentSchool === $school ? '' : 'secondary' ?>"
+        class="school-tab-btn <?= $currentSchool === $school ? 'is-active' : 'secondary' ?>"
       ><?= us_h($school) ?><?= $currentSchool === $school ? ' ✓' : '' ?></button>
     <?php endforeach; ?>
   </form>

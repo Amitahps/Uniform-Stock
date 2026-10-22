@@ -29,21 +29,49 @@ function us_header(string $title, ?array $user = null, ?array $company = null, ?
 {
     $pageTitle = $title . ' · ' . US_APP_NAME;
     $flash = us_flash_take();
-    $isAdmin = $user !== null && us_is_admin($user);
+    $isAdmin = $user !== null && function_exists('us_is_admin') && us_is_admin($user);
     $script = basename((string) ($_SERVER['SCRIPT_NAME'] ?? 'index.php'));
     $qs = (string) ($_SERVER['QUERY_STRING'] ?? '');
     $next = $script . ($qs !== '' ? '?' . $qs : '');
-    // Avoid nesting switch targets
     if (in_array($script, ['switch_school.php', 'select_company.php', 'login.php', 'logout.php'], true)) {
         $next = 'index.php';
     }
 
+    $css = us_url('assets/style.css') . '?v=' . rawurlencode(US_APP_VERSION);
+
     echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">';
     echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
+    echo '<meta name="us-app-version" content="' . us_h(US_APP_VERSION) . '">';
     echo '<title>' . us_h($pageTitle) . '</title>';
-    echo '<link rel="stylesheet" href="' . us_h(us_url('assets/style.css')) . '">';
+    echo '<link rel="stylesheet" href="' . us_h($css) . '">';
     echo '</head><body>';
     echo '<div class="wrap">';
+
+    // School switcher FIRST (very top) whenever a company is selected — hard to miss.
+    if ($user && $company) {
+        echo '<div class="school-bar" role="tablist" aria-label="Choose school">';
+        echo '<div class="school-bar-title">Choose school for <strong>' . us_h($company['name']) . '</strong></div>';
+        echo '<div class="school-bar-buttons">';
+        foreach (us_schools() as $s) {
+            $active = ($school === $s);
+            $href = us_url('switch_school.php?school=' . rawurlencode($s) . '&next=' . rawurlencode($next));
+            echo '<a class="school-tab' . ($active ? ' is-active' : '') . '" href="' . us_h($href) . '"';
+            echo ' role="tab" aria-selected="' . ($active ? 'true' : 'false') . '">';
+            echo us_h($s);
+            if ($active) {
+                echo ' <span class="school-tab-check">✓</span>';
+            }
+            echo '</a>';
+        }
+        echo '</div>';
+        if ($school === null) {
+            echo '<p class="school-bar-hint">Tap <strong>Bachpan</strong> or <strong>AHP.S</strong> to continue with Items / Stock / Reports.</p>';
+        } else {
+            echo '<p class="school-bar-hint">Active school: <strong>' . us_h($school) . '</strong> — tap the other button to switch.</p>';
+        }
+        echo '</div>';
+    }
+
     echo '<header class="top">';
     echo '<div class="brand"><a href="' . us_h(us_url('index.php')) . '">' . us_h(US_APP_NAME) . '</a></div>';
     if ($user) {
@@ -79,24 +107,6 @@ function us_header(string $title, ?array $user = null, ?array $company = null, ?
     }
     echo '</header>';
 
-    // School tabs — always visible when a company is selected.
-    if ($user && $company) {
-        echo '<div class="school-tabs" role="tablist" aria-label="School">';
-        echo '<span class="school-tabs-label">School</span>';
-        foreach (us_schools() as $s) {
-            $active = ($school === $s);
-            $href = us_url('switch_school.php?school=' . rawurlencode($s) . '&next=' . rawurlencode($next));
-            echo '<a class="school-tab' . ($active ? ' is-active' : '') . '" href="' . us_h($href) . '"';
-            echo ' role="tab" aria-selected="' . ($active ? 'true' : 'false') . '">';
-            echo us_h($s);
-            echo '</a>';
-        }
-        if ($school === null) {
-            echo '<span class="school-tabs-hint muted">Choose Bachpan or AHP.S</span>';
-        }
-        echo '</div>';
-    }
-
     if ($flash) {
         echo '<div class="flash flash-' . us_h($flash['type']) . '">' . us_h($flash['message']) . '</div>';
     }
@@ -107,6 +117,9 @@ function us_header(string $title, ?array $user = null, ?array $company = null, ?
 function us_footer(): void
 {
     echo '</main>';
-    echo '<footer class="foot"><small>School vendor stock · Hostinger / PHP + SQLite · company + school (Bachpan / AHP.S)</small></footer>';
+    echo '<footer class="foot"><small>';
+    echo 'School vendor stock · company + Bachpan / AHP.S';
+    echo ' · <span class="app-version">app ' . us_h(US_APP_VERSION) . '</span>';
+    echo '</small></footer>';
     echo '</div></body></html>';
 }
