@@ -21,11 +21,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $itemName = trim((string) ($_POST['item_name'] ?? ''));
             $size = trim((string) ($_POST['size'] ?? ''));
             if ($itemNo === '' || $itemName === '' || $size === '') {
-                throw new RuntimeException('Item name, item no, and size are all required.');
+                throw new RuntimeException('Item name, item code, and size are all required.');
             }
             us_create_sku($pdo, $companyId, $itemNo, $itemName, $size);
             us_flash_set('ok', 'Registered ' . $itemName . ' · ' . $itemNo . ' · ' . $size . '.');
-            header('Location: items.php');
+            header('Location: ' . us_url('items.php'));
             exit;
         }
         if ($action === 'update') {
@@ -39,14 +39,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 (string) ($_POST['size'] ?? '')
             );
             us_flash_set('ok', 'Item updated.');
-            header('Location: items.php');
+            header('Location: ' . us_url('items.php'));
             exit;
         }
         if ($action === 'delete') {
             $skuId = (int) ($_POST['sku_id'] ?? 0);
             us_delete_sku($pdo, $companyId, $skuId);
             us_flash_set('ok', 'Item deleted.');
-            header('Location: items.php');
+            header('Location: ' . us_url('items.php'));
             exit;
         }
     } catch (Throwable $e) {
@@ -69,7 +69,7 @@ $skus = us_stock_rows($pdo, $companyId);
 us_header('Items', $user, $company);
 ?>
 <p class="lead">
-  Register item name, item no, and size once for <strong><?= us_h($company['name']) ?></strong>.
+  Register item name, item code, and size once for <strong><?= us_h($company['name']) ?></strong>.
   Stock-in bills only select these and enter quantity. Edit anytime; delete only if the SKU has no stock history.
 </p>
 <?php if ($error !== ''): ?>
@@ -84,12 +84,12 @@ us_header('Items', $user, $company);
     <input type="hidden" name="sku_id" value="<?= (int) $editSku['id'] ?>">
     <div class="grid grid-2">
       <div>
-        <label for="edit_item_no">Item no</label>
-        <input id="edit_item_no" name="item_no" required value="<?= us_h($editSku['item_no']) ?>">
-      </div>
-      <div>
         <label for="edit_item_name">Item name</label>
         <input id="edit_item_name" name="item_name" required value="<?= us_h($editSku['item_name']) ?>">
+      </div>
+      <div>
+        <label for="edit_item_no">Item code</label>
+        <input id="edit_item_no" name="item_no" required value="<?= us_h($editSku['item_no']) ?>">
       </div>
     </div>
     <div style="max-width:240px">
@@ -98,7 +98,7 @@ us_header('Items', $user, $company);
     </div>
     <div class="actions">
       <button type="submit">Save changes</button>
-      <a class="btn secondary" href="items.php">Cancel</a>
+      <a class="btn secondary" href="<?= us_h(us_url('items.php')) ?>">Cancel</a>
     </div>
   </form>
 </section>
@@ -107,7 +107,13 @@ us_header('Items', $user, $company);
   <input type="hidden" name="action" value="create">
   <div class="grid grid-2">
     <div>
-      <label for="item_no">Item no</label>
+      <label for="item_name">Item name</label>
+      <input id="item_name" name="item_name" required
+             value="<?= us_h($_POST['item_name'] ?? '') ?>"
+             placeholder="e.g. Shirt">
+    </div>
+    <div>
+      <label for="item_no">Item code</label>
       <input id="item_no" name="item_no" list="item_no_list" required
              value="<?= us_h($_POST['item_no'] ?? '') ?>"
              placeholder="e.g. U001">
@@ -116,14 +122,8 @@ us_header('Items', $user, $company);
           <option value="<?= us_h($no) ?>"><?= us_h($meta['item_name']) ?></option>
         <?php endforeach; ?>
       </datalist>
-    </div>
-    <div>
-      <label for="item_name">Item name</label>
-      <input id="item_name" name="item_name" required
-             value="<?= us_h($_POST['item_name'] ?? '') ?>"
-             placeholder="e.g. Shirt">
       <p class="muted" style="margin:0.35rem 0 0;font-size:0.9rem">
-        If the item no already exists, its name is kept; you are adding another size.
+        If the item code already exists, its name is kept; you are adding another size.
       </p>
     </div>
   </div>
@@ -133,7 +133,7 @@ us_header('Items', $user, $company);
   </div>
   <div class="actions">
     <button type="submit">Add item / size</button>
-    <a class="btn secondary" href="stock_in.php">Go to stock in</a>
+    <a class="btn secondary" href="<?= us_h(us_url('stock_in.php')) ?>">Go to stock in</a>
   </div>
 </form>
 <script>
@@ -162,7 +162,7 @@ us_header('Items', $user, $company);
     <thead>
       <tr>
         <th>Item name</th>
-        <th>Item no</th>
+        <th>Item code</th>
         <th>Size</th>
         <th class="num">On hand</th>
         <th></th>
@@ -177,7 +177,7 @@ us_header('Items', $user, $company);
           <td><?= us_h($row['size']) ?></td>
           <td class="num"><?= (int) $row['on_hand'] ?></td>
           <td class="row-actions">
-            <a class="btn secondary" href="items.php?edit=<?= (int) $row['id'] ?>">Edit</a>
+            <a class="btn secondary" href="<?= us_h(us_url('items.php?edit=' . (int) $row['id'])) ?>">Edit</a>
             <?php if ($hasMoves): ?>
               <span class="muted" title="Has stock history">Locked</span>
             <?php else: ?>

@@ -87,8 +87,8 @@ us_header('Stock in', $user, $company);
 ?>
 <p class="lead">
   Company: <strong><?= us_h($company['name']) ?></strong>.
-  Enter bill number, select registered item no (size fills automatically), enter quantity only.
-  Register new items under <a href="items.php">Items</a> first.
+  Enter bill number, select registered item code (name and size fill automatically), enter quantity only.
+  Register new items under <a href="<?= us_h(us_url('items.php')) ?>">Items</a> first.
 </p>
 <?php if ($error !== ''): ?>
   <div class="flash flash-error"><?= us_h($error) ?></div>
@@ -97,7 +97,7 @@ us_header('Stock in', $user, $company);
 <?php if (!$catalog): ?>
   <div class="flash flash-warn">
     No items registered for this company.
-    <a href="items.php">Add an item</a> (name, item no, size) once, then receive stock here.
+    <a href="<?= us_h(us_url('items.php')) ?>">Add an item</a> (name, item code, size) once, then receive stock here.
   </div>
 <?php else: ?>
 <form method="post" id="stock_in_form">
@@ -132,24 +132,24 @@ us_header('Stock in', $user, $company);
     ?>
     <div class="line-row stock-in-row">
       <div>
-        <label>Item no</label>
+        <label>Item name</label>
+        <input type="text" class="item-name-display" readonly tabindex="-1" value="">
+      </div>
+      <div>
+        <label>Item code</label>
         <select class="item-no-select" required>
           <option value="">Select…</option>
           <?php foreach ($itemNos as $no): ?>
             <option value="<?= us_h($no) ?>" <?= $selectedItemNo === $no ? 'selected' : '' ?>>
-              <?= us_h($no . ' — ' . $catalog[$no]['item_name']) ?>
+              <?= us_h($catalog[$no]['item_name'] . ' · ' . $no) ?>
             </option>
           <?php endforeach; ?>
         </select>
       </div>
       <div>
-        <label>Item name</label>
-        <input type="text" class="item-name-display" readonly tabindex="-1" value="">
-      </div>
-      <div>
         <label>Size</label>
         <select class="size-select" required>
-          <option value="">Select item no first…</option>
+          <option value="">Select item code first…</option>
         </select>
         <input type="hidden" name="sku_id[]" class="sku-id-input" value="<?= $selectedSku > 0 ? (int) $selectedSku : '' ?>">
       </div>
@@ -173,22 +173,22 @@ us_header('Stock in', $user, $company);
 <template id="line_template">
   <div class="line-row stock-in-row">
     <div>
-      <label>Item no</label>
-      <select class="item-no-select" required>
-        <option value="">Select…</option>
-        <?php foreach ($itemNos as $no): ?>
-          <option value="<?= us_h($no) ?>"><?= us_h($no . ' — ' . $catalog[$no]['item_name']) ?></option>
-        <?php endforeach; ?>
-      </select>
-    </div>
-    <div>
       <label>Item name</label>
       <input type="text" class="item-name-display" readonly tabindex="-1" value="">
     </div>
     <div>
+      <label>Item code</label>
+      <select class="item-no-select" required>
+        <option value="">Select…</option>
+        <?php foreach ($itemNos as $no): ?>
+          <option value="<?= us_h($no) ?>"><?= us_h($catalog[$no]['item_name'] . ' · ' . $no) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <div>
       <label>Size</label>
       <select class="size-select" required>
-        <option value="">Select item no first…</option>
+        <option value="">Select item code first…</option>
       </select>
       <input type="hidden" name="sku_id[]" class="sku-id-input" value="">
     </div>
@@ -221,7 +221,7 @@ us_header('Stock in', $user, $company);
       nameEl.value = '';
       const opt = document.createElement('option');
       opt.value = '';
-      opt.textContent = 'Select item no first…';
+      opt.textContent = 'Select item code first…';
       sizeSel.appendChild(opt);
       sizeSel.disabled = false;
       return;

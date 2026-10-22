@@ -536,7 +536,7 @@ function us_create_sku(PDO $pdo, int $companyId, string $itemNo, string $itemNam
     $find = $pdo->prepare('SELECT id FROM skus WHERE company_id = ? AND item_no = ? AND size = ?');
     $find->execute([$companyId, $itemNo, $size]);
     if ($find->fetch()) {
-        throw new RuntimeException('Item no "' . $itemNo . '" with size "' . $size . '" is already registered for this company.');
+        throw new RuntimeException('Item code "' . $itemNo . '" with size "' . $size . '" is already registered for this company.');
     }
 
     $nameStmt = $pdo->prepare('SELECT item_name FROM skus WHERE company_id = ? AND item_no = ? ORDER BY id LIMIT 1');
@@ -557,7 +557,7 @@ function us_update_sku(PDO $pdo, int $companyId, int $skuId, string $itemNo, str
     $itemName = trim($itemName);
     $size = trim($size);
     if ($itemNo === '' || $itemName === '' || $size === '') {
-        throw new RuntimeException('Item name, item no, and size are all required.');
+        throw new RuntimeException('Item name, item code, and size are all required.');
     }
 
     $sku = us_get_sku($pdo, $skuId, $companyId);
@@ -568,7 +568,7 @@ function us_update_sku(PDO $pdo, int $companyId, int $skuId, string $itemNo, str
     $dup = $pdo->prepare('SELECT id FROM skus WHERE company_id = ? AND item_no = ? AND size = ? AND id != ?');
     $dup->execute([$companyId, $itemNo, $size, $skuId]);
     if ($dup->fetch()) {
-        throw new RuntimeException('Another item already uses item no "' . $itemNo . '" with size "' . $size . '".');
+        throw new RuntimeException('Another item already uses item code "' . $itemNo . '" with size "' . $size . '".');
     }
 
     $oldItemNo = (string) $sku['item_no'];

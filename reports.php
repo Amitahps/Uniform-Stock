@@ -96,7 +96,7 @@ us_header('Reports', $user, $company);
       <thead>
         <tr>
           <th>Item name</th>
-          <th>Item no</th>
+          <th>Item code</th>
           <th>Size</th>
           <th class="num">On hand</th>
         </tr>
@@ -124,7 +124,7 @@ us_header('Reports', $user, $company);
       <thead>
         <tr>
           <th>Item name</th>
-          <th>Item no</th>
+          <th>Item code</th>
           <th>Size</th>
           <th class="num">On hand</th>
         </tr>
@@ -184,7 +184,7 @@ us_header('Reports', $user, $company);
       <thead>
         <tr>
           <th>Item name</th>
-          <th>Item no</th>
+          <th>Item code</th>
           <th>Size</th>
           <th class="num">Qty in</th>
           <th class="num">Qty out</th>
