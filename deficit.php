@@ -15,10 +15,16 @@ $filter = (string) ($_GET['filter'] ?? 'all');
 if (!in_array($filter, ['all', 'item', 'size'], true)) {
     $filter = 'all';
 }
-$itemNo = trim((string) ($_GET['item_no'] ?? ''));
+$itemPairFilter = (string) ($_GET['item'] ?? '');
+$itemPair = us_parse_item_pair_key($itemPairFilter);
+$itemName = $itemPair[0] ?? '';
+$itemNo = $itemPair[1] ?? '';
 $size = trim((string) ($_GET['size'] ?? ''));
 
-$itemStmt = $pdo->prepare('SELECT DISTINCT item_no, item_name FROM skus WHERE company_id = ? AND school = ? ORDER BY item_name COLLATE NOCASE');
+$itemStmt = $pdo->prepare(
+    'SELECT DISTINCT item_name, item_no FROM skus WHERE company_id = ? AND school = ?
+     ORDER BY item_name COLLATE NOCASE, item_no COLLATE NOCASE'
+);
 $itemStmt->execute([$companyId, $school]);
 $items = $itemStmt->fetchAll();
 $sizeStmt = $pdo->prepare('SELECT DISTINCT size FROM skus WHERE company_id = ? AND school = ? ORDER BY size COLLATE NOCASE');
@@ -29,8 +35,9 @@ $rows = us_stock_rows(
     $pdo,
     $companyId,
     $school,
-    $filter === 'item' ? $itemNo : null,
-    $filter === 'size' ? $size : null
+    $filter === 'item' ? ($itemNo !== '' ? $itemNo : null) : null,
+    $filter === 'size' ? ($size !== '' ? $size : null) : null,
+    $filter === 'item' ? ($itemName !== '' ? $itemName : null) : null
 );
 $deficit = array_values(array_filter($rows, static fn(array $r): bool => (int) $r['on_hand'] < US_DEFICIT_THRESHOLD));
 
@@ -38,7 +45,8 @@ us_header('Deficit', $user, $company, $school);
 ?>
 <p class="lead">
   Company <strong><?= us_h($company['name']) ?></strong> · School <strong><?= us_h($school) ?></strong> only.
-  SKUs with on-hand quantity &lt; <?= (int) US_DEFICIT_THRESHOLD ?>. Filter by all, item, or size.
+  SKUs with on-hand quantity &lt; <?= (int) US_DEFICIT_THRESHOLD ?>.
+  Filter by name+code or size (same code on different names stays separate).
 </p>
 
 <form method="get" class="grid grid-2" style="margin-bottom:1rem">
@@ -46,17 +54,19 @@ us_header('Deficit', $user, $company, $school);
     <label for="filter">Filter</label>
     <select id="filter" name="filter" onchange="this.form.submit()">
       <option value="all" <?= $filter === 'all' ? 'selected' : '' ?>>All deficit</option>
-      <option value="item" <?= $filter === 'item' ? 'selected' : '' ?>>By item code</option>
+      <option value="item" <?= $filter === 'item' ? 'selected' : '' ?>>By item name · code</option>
       <option value="size" <?= $filter === 'size' ? 'selected' : '' ?>>By size</option>
     </select>
   </div>
   <?php if ($filter === 'item'): ?>
     <div>
-      <label for="item_no">Item code</label>
-      <select id="item_no" name="item_no" onchange="this.form.submit()">
-        <option value="">Select item code…</option>
-        <?php foreach ($items as $it): ?>
-          <option value="<?= us_h($it['item_no']) ?>" <?= $itemNo === $it['item_no'] ? 'selected' : '' ?>>
+      <label for="item">Item name · code</label>
+      <select id="item" name="item" onchange="this.form.submit()">
+        <option value="">Select item…</option>
+        <?php foreach ($items as $it):
+            $pair = us_item_pair_key((string) $it['item_name'], (string) $it['item_no']);
+        ?>
+          <option value="<?= us_h($pair) ?>" <?= $itemPairFilter === $pair ? 'selected' : '' ?>>
             <?= us_h($it['item_name'] . ' · ' . $it['item_no']) ?>
           </option>
         <?php endforeach; ?>
@@ -77,8 +87,8 @@ us_header('Deficit', $user, $company, $school);
   <?php endif; ?>
 </form>
 
-<?php if ($filter === 'item' && $itemNo === ''): ?>
-  <p class="muted">Choose an item code to list its deficit sizes (same name on other codes is listed separately).</p>
+<?php if ($filter === 'item' && $itemPair === null): ?>
+  <p class="muted">Choose an item name · code to list its deficit sizes.</p>
 <?php elseif ($filter === 'size' && $size === ''): ?>
   <p class="muted">Choose a size to list deficit items.</p>
 <?php elseif (!$deficit): ?>

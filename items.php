@@ -90,7 +90,8 @@ us_header('Items', $user, $company, $school);
 <p class="lead">
   Company <strong><?= us_h($company['name']) ?></strong> · School <strong><?= us_h($school) ?></strong>.
   Select an existing item name and enter code + size, or create a brand-new name.
-  Uniqueness is <strong>item code + size</strong> within this company + school only.
+  Uniqueness is <strong>item name + item code + size</strong> within this company + school
+  (different names may reuse the same code and size).
 </p>
 <?php if ($error !== ''): ?>
   <div class="flash flash-error"><?= us_h($error) ?></div>

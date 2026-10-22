@@ -192,7 +192,7 @@ CREATE TABLE skus (
     item_name TEXT NOT NULL,
     size TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(company_id, school, item_no, size),
+    UNIQUE(company_id, school, item_name, item_no, size),
     FOREIGN KEY (company_id) REFERENCES companies(id)
 );
 SQL,
@@ -359,7 +359,7 @@ CREATE TABLE skus_new (
     item_name TEXT NOT NULL,
     size TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(company_id, school, item_no, size),
+    UNIQUE(company_id, school, item_name, item_no, size),
     FOREIGN KEY (company_id) REFERENCES companies(id)
 );
 SQL,
@@ -417,9 +417,12 @@ function us_rebuild_if_school_needed(
     $cols = us_table_columns($pdo, $table);
     $sql = us_table_create_sql($pdo, $table);
     $hasSchool = in_array('school', $cols, true);
+    // SKUs must be unique on company + school + item_name + item_no + size
+    // (same code/size allowed for different names).
     $uniqueOk = !$needsSchoolInUnique
-        || str_contains($sql, 'UNIQUE(company_id, school, item_no, size)')
-        || str_contains($sql, 'UNIQUE(company_id, school, bill_no)');
+        || ($table === 'skus' && str_contains($sql, 'UNIQUE(company_id, school, item_name, item_no, size)'))
+        || ($table === 'receipts' && str_contains($sql, 'UNIQUE(company_id, school, bill_no)'))
+        || ($table !== 'skus' && $table !== 'receipts');
 
     if ($hasSchool && $uniqueOk) {
         return;
@@ -735,9 +738,10 @@ function us_movement_rows(
     string $school,
     string $dateFrom,
     string $dateTo,
-    ?string $itemNo = null
+    ?string $itemNo = null,
+    ?string $itemName = null
 ): array {
-    $skus = us_stock_rows($pdo, $companyId, $school, $itemNo);
+    $skus = us_stock_rows($pdo, $companyId, $school, $itemNo, null, $itemName);
     $inStmt = $pdo->prepare(
         'SELECT COALESCE(SUM(rl.quantity), 0)
          FROM receipt_lines rl
@@ -790,7 +794,8 @@ function us_stock_rows(
     int $companyId,
     string $school,
     ?string $itemNo = null,
-    ?string $size = null
+    ?string $size = null,
+    ?string $itemName = null
 ): array {
     if (!us_is_valid_school($school)) {
         return [];
@@ -809,6 +814,10 @@ FROM skus s
 WHERE s.company_id = ? AND s.school = ?
 SQL;
     $params = [$companyId, $school];
+    if ($itemName !== null && $itemName !== '') {
+        $sql .= ' AND s.item_name = ?';
+        $params[] = $itemName;
+    }
     if ($itemNo !== null && $itemNo !== '') {
         $sql .= ' AND s.item_no = ?';
         $params[] = $itemNo;
@@ -837,25 +846,22 @@ function us_create_sku(
     $itemNo = trim($itemNo);
     $itemName = trim($itemName);
     $size = trim($size);
-
-    $find = $pdo->prepare(
-        'SELECT id FROM skus WHERE company_id = ? AND school = ? AND item_no = ? AND size = ?'
-    );
-    $find->execute([$companyId, $school, $itemNo, $size]);
-    if ($find->fetch()) {
-        throw new RuntimeException(
-            'Item code "' . $itemNo . '" with size "' . $size . '" already exists for this school. '
-            . 'Enter a different size for this code, or a different item code.'
-        );
+    if ($itemNo === '' || $itemName === '' || $size === '') {
+        throw new RuntimeException('Item name, item code, and size are all required.');
     }
 
-    $nameStmt = $pdo->prepare(
-        'SELECT item_name FROM skus WHERE company_id = ? AND school = ? AND item_no = ? ORDER BY id LIMIT 1'
+    // Unique: company + school + name + code + size.
+    // Same code/size is allowed when the item name differs (e.g. Shirt U-01/32 and Trouser U-01/32).
+    $find = $pdo->prepare(
+        'SELECT id FROM skus
+         WHERE company_id = ? AND school = ? AND item_name = ? AND item_no = ? AND size = ?'
     );
-    $nameStmt->execute([$companyId, $school, $itemNo]);
-    $existingName = $nameStmt->fetchColumn();
-    if ($existingName !== false && $existingName !== '') {
-        $itemName = (string) $existingName;
+    $find->execute([$companyId, $school, $itemName, $itemNo, $size]);
+    if ($find->fetch()) {
+        throw new RuntimeException(
+            'Item "' . $itemName . '" with code "' . $itemNo . '" and size "' . $size
+            . '" already exists for this school. Change the name, code, or size.'
+        );
     }
 
     $ins = $pdo->prepare(
@@ -887,25 +893,21 @@ function us_update_sku(
     }
 
     $dup = $pdo->prepare(
-        'SELECT id FROM skus WHERE company_id = ? AND school = ? AND item_no = ? AND size = ? AND id != ?'
+        'SELECT id FROM skus
+         WHERE company_id = ? AND school = ? AND item_name = ? AND item_no = ? AND size = ? AND id != ?'
     );
-    $dup->execute([$companyId, $school, $itemNo, $size, $skuId]);
+    $dup->execute([$companyId, $school, $itemName, $itemNo, $size, $skuId]);
     if ($dup->fetch()) {
-        throw new RuntimeException('Another item already uses item code "' . $itemNo . '" with size "' . $size . '".');
+        throw new RuntimeException(
+            'Another item already uses name "' . $itemName . '", code "' . $itemNo
+            . '", and size "' . $size . '".'
+        );
     }
 
-    $oldItemNo = (string) $sku['item_no'];
     $upd = $pdo->prepare(
         'UPDATE skus SET item_no = ?, item_name = ?, size = ? WHERE id = ? AND company_id = ? AND school = ?'
     );
     $upd->execute([$itemNo, $itemName, $size, $skuId, $companyId, $school]);
-
-    if ($itemNo === $oldItemNo) {
-        $sync = $pdo->prepare(
-            'UPDATE skus SET item_name = ? WHERE company_id = ? AND school = ? AND item_no = ?'
-        );
-        $sync->execute([$itemName, $companyId, $school, $itemNo]);
-    }
 }
 
 function us_delete_sku(PDO $pdo, int $companyId, string $school, int $skuId): void
@@ -924,20 +926,23 @@ function us_delete_sku(PDO $pdo, int $companyId, string $school, int $skuId): vo
 }
 
 /**
- * @return array<string, array{item_name: string, sizes: list<array{sku_id: int, size: string, on_hand: int}>}>
+ * Catalog keyed by item_name, then item_no (codes may repeat across names).
+ *
+ * @return array<string, array<string, list<array{sku_id: int, size: string, on_hand: int}>>>
  */
 function us_item_catalog(PDO $pdo, int $companyId, string $school): array
 {
     $catalog = [];
     foreach (us_stock_rows($pdo, $companyId, $school) as $row) {
+        $name = (string) $row['item_name'];
         $itemNo = (string) $row['item_no'];
-        if (!isset($catalog[$itemNo])) {
-            $catalog[$itemNo] = [
-                'item_name' => (string) $row['item_name'],
-                'sizes' => [],
-            ];
+        if (!isset($catalog[$name])) {
+            $catalog[$name] = [];
         }
-        $catalog[$itemNo]['sizes'][] = [
+        if (!isset($catalog[$name][$itemNo])) {
+            $catalog[$name][$itemNo] = [];
+        }
+        $catalog[$name][$itemNo][] = [
             'sku_id' => (int) $row['id'],
             'size' => (string) $row['size'],
             'on_hand' => (int) $row['on_hand'],

@@ -7,13 +7,13 @@ PHP + SQLite stock inventory for a school uniform vendor. **Separate website** f
 - **Companies** — create/select your vendor company. **Remove company** (password + name confirm) deletes that company’s stock for **both** schools.
 - **Schools** — after a company is selected, choose **Bachpan** or **AHP.S** (fixed). Items, stock in/out, reports, and deficit are scoped to **company + school**. Switching school under the same company shows only that school’s stock. Bachpan and AHP.S never mix.
 - **Login** — session auth; default `admin` / `admin123` (change under Password)
-- **Items** — **Use existing item name** (dropdown) → type **item code** → type **size**; or **Create new item name** (name + code + size). Uniqueness is **company + school + item code + size**. **Edit** anytime. **Delete** only if unused.
-- **Stock in** — bill number + date once; item-name blocks with **On hand** before qty; **One Save** for the whole bill. Company+school scoped.
-- **Stock out** — Item/size → **On hand** → Qty; blocks oversell. Company+school scoped.
-- **Reports** / **Deficit** — current company + school only.
+- **Items** — **Use existing item name** (dropdown) → type **item code** → type **size**; or **Create new item name** (name + code + size). Uniqueness is **company + school + item name + item code + size**. Different names may share the same code/size (e.g. Shirt U-01/32 and Trouser U-01/32). Same name+code+size = duplicate error. **Edit** anytime. **Delete** only if unused.
+- **Stock in** — bill number + date once; item-name blocks list that name’s codes/sizes with **On hand** before qty; **One Save** for the whole bill. Company+school scoped; SKUs identified by name+code+size.
+- **Stock out** — Item name · code · size → **On hand** → Qty; blocks oversell. Company+school scoped.
+- **Reports** / **Deficit** — current company + school only; rows and filters use name+code+size (not code alone).
 - **Backup** (login required) — **Download source code** (server-built ZIP of PHP/assets, excludes `data/*.db`) and **Download data backup** (timestamped `uniform-stock-backup-YYYYMMDD-HHMM.db`). Optional GitHub `main.zip` link. `data/` stays blocked from public URLs; downloads only via authenticated PHP.
 
-SKU identity is **company + school + item code + size** (DB: `company_id`, `school`, `item_no`, `size`). On-hand = sum(receipts) − sum(issues) per SKU.
+SKU identity is **company + school + item name + item code + size** (DB: `company_id`, `school`, `item_name`, `item_no`, `size`). On-hand = sum(receipts) − sum(issues) per SKU.
 
 ### Typical use
 

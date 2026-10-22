@@ -36,3 +36,26 @@ function us_is_reserved_school_name(string $name): bool
     }
     return false;
 }
+
+/** Encode name+code for filter selects (codes may repeat across names). */
+function us_item_pair_key(string $itemName, string $itemNo): string
+{
+    return $itemName . "\t" . $itemNo;
+}
+
+/**
+ * @return array{0:string,1:string}|null [item_name, item_no]
+ */
+function us_parse_item_pair_key(string $key): ?array
+{
+    if ($key === '' || !str_contains($key, "\t")) {
+        return null;
+    }
+    $parts = explode("\t", $key, 2);
+    $name = trim($parts[0]);
+    $no = trim($parts[1] ?? '');
+    if ($name === '' || $no === '') {
+        return null;
+    }
+    return [$name, $no];
+}

@@ -19,7 +19,10 @@ if (!in_array($mode, ['lookup', 'statement', 'movements'], true)) {
 
 $dateFrom = trim((string) ($_GET['date_from'] ?? ''));
 $dateTo = trim((string) ($_GET['date_to'] ?? ''));
-$itemNoFilter = trim((string) ($_GET['item_no'] ?? ''));
+$itemPairFilter = (string) ($_GET['item'] ?? '');
+$itemPair = us_parse_item_pair_key($itemPairFilter);
+$itemNameFilter = $itemPair[0] ?? '';
+$itemNoFilter = $itemPair[1] ?? '';
 if ($dateFrom === '') {
     $dateFrom = date('Y-m-01');
 }
@@ -28,7 +31,10 @@ if ($dateTo === '') {
 }
 
 $all = us_stock_rows($pdo, $companyId, $school);
-$itemOptions = $pdo->prepare('SELECT DISTINCT item_no, item_name FROM skus WHERE company_id = ? AND school = ? ORDER BY item_name COLLATE NOCASE');
+$itemOptions = $pdo->prepare(
+    'SELECT DISTINCT item_name, item_no FROM skus WHERE company_id = ? AND school = ?
+     ORDER BY item_name COLLATE NOCASE, item_no COLLATE NOCASE'
+);
 $itemOptions->execute([$companyId, $school]);
 $itemOptions = $itemOptions->fetchAll();
 
@@ -56,7 +62,8 @@ if ($mode === 'movements') {
             $school,
             $dateFrom,
             $dateTo,
-            $itemNoFilter !== '' ? $itemNoFilter : null
+            $itemNoFilter !== '' ? $itemNoFilter : null,
+            $itemNameFilter !== '' ? $itemNameFilter : null
         );
     }
 }
@@ -67,7 +74,7 @@ us_header('Reports', $user, $company, $school);
   Company <strong><?= us_h($company['name']) ?></strong> · School <strong><?= us_h($school) ?></strong> only — Bachpan and AHP.S never mix.
   Quantity lookup, item-wise statement, or date-range stock movements.
   Each row is one SKU: <strong>item name + item code + size</strong>.
-  Same name with size 3 and size 4 (or different codes) always appear as <strong>separate lines</strong> with their own qty in/out/balance — never merged.
+  Different names may share the same code/size (e.g. Shirt U-01/32 and Trouser U-01/32) — they stay separate lines.
 </p>
 
 <div class="actions" style="margin-bottom:1rem">
@@ -168,11 +175,13 @@ us_header('Reports', $user, $company, $school);
       <input id="date_to" name="date_to" type="date" required value="<?= us_h($dateTo) ?>">
     </div>
     <div>
-      <label for="item_no">Item code (optional)</label>
-      <select id="item_no" name="item_no">
-        <option value="">All item codes</option>
-        <?php foreach ($itemOptions as $it): ?>
-          <option value="<?= us_h($it['item_no']) ?>" <?= $itemNoFilter === $it['item_no'] ? 'selected' : '' ?>>
+      <label for="item">Item name · code (optional)</label>
+      <select id="item" name="item">
+        <option value="">All items</option>
+        <?php foreach ($itemOptions as $it):
+            $pair = us_item_pair_key((string) $it['item_name'], (string) $it['item_no']);
+        ?>
+          <option value="<?= us_h($pair) ?>" <?= $itemPairFilter === $pair ? 'selected' : '' ?>>
             <?= us_h($it['item_name'] . ' · ' . $it['item_no']) ?>
           </option>
         <?php endforeach; ?>
@@ -186,7 +195,7 @@ us_header('Reports', $user, $company, $school);
   <?php if ($movementError !== ''): ?>
     <div class="flash flash-error"><?= us_h($movementError) ?></div>
   <?php elseif (!$movements): ?>
-    <p class="muted">No SKUs for this company and school<?= $itemNoFilter !== '' ? ' / item filter' : '' ?>.</p>
+    <p class="muted">No SKUs for this company and school<?= $itemPair !== null ? ' / item filter' : '' ?>.</p>
   <?php else: ?>
     <table>
       <thead>
