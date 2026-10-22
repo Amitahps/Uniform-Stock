@@ -1,0 +1,15 @@
+# Uniform Stock — Hostinger (Apache / LiteSpeed)
+# Keeps the site root serving PHP; blocks public access to data/.
+
+DirectoryIndex index.php login.php index.html
+
+# Avoid directory listing 403s when index is missing; still prefer DirectoryIndex above.
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  # Deny web access to the data directory (SQLite lives here).
+  RewriteRule (^|/)data(/|$) - [F,L]
+  # Deny direct download of database files anywhere.
+  RewriteRule \.db(-wal|-shm)?$ - [F,L]
+</IfModule>

@@ -57,6 +57,12 @@ The app migrates with foreign keys off and tries to recover half-broken DBs (lef
 
 Do **not** delete or change school-fee-erp or Badminton files.
 
+### If the site shows **403 Forbidden**
+
+1. **Redeploy** Uniform-Stock `main` in Hostinger Git (confirm files appear in this site’s `public_html`: `index.php`, `login.php`, `.htaccess`).
+2. If `public_html` is empty or only has a nested folder, the Git deploy path is wrong — point deploy at `public_html` (repo root), not a subfolder and not another website.
+3. Root `.htaccess` sets `DirectoryIndex index.php login.php` and blocks web access to `data/` only (not the site root).
+
 ## Security notes
 
 - Change the default password immediately after first login.
