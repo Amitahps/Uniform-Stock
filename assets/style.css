@@ -88,6 +88,17 @@ button.school-tab-btn.is-active {
   background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
 }
 .app-version { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.assign-box {
+  border: 1px solid var(--line); border-radius: 10px; padding: 0.75rem 1rem; margin: 0;
+}
+.assign-box legend { font-weight: 700; padding: 0 0.35rem; }
+.assign-row {
+  display: flex; align-items: center; gap: 0.65rem;
+  font-weight: 600; margin: 0.45rem 0; cursor: pointer;
+}
+.assign-row input[type="checkbox"] {
+  width: 1.25rem; height: 1.25rem; flex-shrink: 0; accent-color: var(--accent);
+}
 .row-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
 .danger-btn { color: var(--danger) !important; border-color: #f0c2c2 !important; }
 

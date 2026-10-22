@@ -17,6 +17,7 @@ if ($editUser && ($editUser['role'] ?? '') !== 'staff') {
 $editCompanyIds = $editUser ? us_user_company_ids($pdo, (int) $editUser['id']) : [];
 
 $allCompanies = us_list_companies($pdo);
+$currentCompanyId = us_current_company_id();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string) ($_POST['action'] ?? '');
@@ -26,13 +27,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!is_array($companyIds)) {
                 $companyIds = [];
             }
+            // If none checked but only one company exists, assign it.
+            if ($companyIds === [] && count($allCompanies) === 1) {
+                $companyIds = [(int) $allCompanies[0]['id']];
+            }
+            $username = trim((string) ($_POST['username'] ?? ''));
             us_create_staff_user(
                 $pdo,
-                (string) ($_POST['username'] ?? ''),
+                $username,
                 (string) ($_POST['password'] ?? ''),
                 $companyIds
             );
-            us_flash_set('ok', 'Staff user created.');
+            us_flash_set(
+                'ok',
+                'Staff user "' . $username . '" created. Log out, then sign in as that username to test. '
+                . 'Staff will not see Companies, Users, Backup, or Password.'
+            );
             header('Location: ' . us_url('users.php'));
             exit;
         }
@@ -44,13 +54,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             us_update_staff_assignments($pdo, $uid, $companyIds);
             us_flash_set('ok', 'Company assignments updated.');
-            header('Location: ' . us_url('users.php'));
+            header('Location: ' . us_url('users.php?edit=' . $uid));
             exit;
         }
         if ($action === 'reset_password') {
             $uid = (int) ($_POST['user_id'] ?? 0);
+            $target = us_get_user($pdo, $uid);
             us_reset_user_password($pdo, $uid, (string) ($_POST['password'] ?? ''));
-            us_flash_set('ok', 'Password reset.');
+            $name = $target['username'] ?? ('#' . $uid);
+            us_flash_set('ok', 'Password reset for "' . $name . '". Give them the new password securely.');
             header('Location: ' . us_url('users.php?edit=' . $uid));
             exit;
         }
@@ -63,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } catch (Throwable $e) {
         $error = $e->getMessage();
-        if ($action === 'update_assignments' || $action === 'reset_password') {
+        if (in_array($action, ['update_assignments', 'reset_password'], true)) {
             $editId = (int) ($_POST['user_id'] ?? 0);
             $editUser = $editId > 0 ? us_get_user($pdo, $editId) : null;
             if ($editUser && ($editUser['role'] ?? '') === 'staff') {
@@ -82,46 +94,51 @@ $school = us_current_school();
 
 us_header('Users', $user, $company, $school);
 ?>
+<div class="flash flash-ok" style="margin-bottom:1rem">
+  <strong>Staff users</strong> — create a username + password, tick the company(ies) they may work in, then
+  <strong>Create staff</strong>. They log in on the Login page with that username.
+  Staff see: Company picker, Items, Stock in/out, Reports, Deficit, Bachpan/AHP.S tabs, Logout.
+  Staff <strong>do not</strong> see: Companies, Users, Backup, Password.
+</div>
 <p class="lead">
-  Create <strong>staff</strong> logins, assign them to one or more companies, and reset passwords.
-  Staff cannot access Companies, Backup, Password, or Users.
+  Admin-only page. Reset a lost staff password with <strong>Edit → Set new password</strong>.
 </p>
 <?php if ($error !== ''): ?>
   <div class="flash flash-error"><?= us_h($error) ?></div>
 <?php endif; ?>
 
 <?php if ($editUser): ?>
-<section style="margin-bottom:1.5rem;padding:1rem;border:1px solid var(--line);border-radius:12px;background:#fff">
-  <h2 style="font-size:1.1rem;margin:0 0 0.75rem">Edit <?= us_h($editUser['username']) ?></h2>
+<section style="margin-bottom:1.5rem;padding:1rem;border:2px solid var(--accent);border-radius:12px;background:#fff">
+  <h2 style="font-size:1.2rem;margin:0 0 0.75rem">Edit staff: <?= us_h($editUser['username']) ?></h2>
   <form method="post" class="grid" style="margin-bottom:1.25rem">
     <input type="hidden" name="action" value="update_assignments">
     <input type="hidden" name="user_id" value="<?= (int) $editUser['id'] ?>">
-    <fieldset style="border:1px solid var(--line);border-radius:10px;padding:0.75rem 1rem">
-      <legend>Assigned companies</legend>
+    <fieldset class="assign-box">
+      <legend>Assigned companies (required)</legend>
       <?php if ($allCompanies === []): ?>
-        <p class="muted">Create a company first.</p>
+        <p class="muted">Create a company first on the Companies page.</p>
       <?php else: ?>
         <?php foreach ($allCompanies as $c): ?>
-          <label style="font-weight:500;display:flex;gap:0.5rem;align-items:center;margin:0.35rem 0">
+          <label class="assign-row">
             <input type="checkbox" name="company_ids[]" value="<?= (int) $c['id'] ?>"
-              <?= in_array((int) $c['id'], $editCompanyIds, true) ? 'checked' : '' ?>
-              style="width:auto">
-            <?= us_h($c['name']) ?>
+              <?= in_array((int) $c['id'], $editCompanyIds, true) ? 'checked' : '' ?>>
+            <span><?= us_h($c['name']) ?></span>
           </label>
         <?php endforeach; ?>
       <?php endif; ?>
     </fieldset>
     <div class="actions">
       <button type="submit">Save assignments</button>
-      <a class="btn secondary" href="<?= us_h(us_url('users.php')) ?>">Done</a>
+      <a class="btn secondary" href="<?= us_h(us_url('users.php')) ?>">Back to list</a>
     </div>
   </form>
   <form method="post" class="grid" style="max-width:420px">
     <input type="hidden" name="action" value="reset_password">
     <input type="hidden" name="user_id" value="<?= (int) $editUser['id'] ?>">
     <div>
-      <label for="password">Reset password</label>
-      <input id="password" name="password" type="password" required minlength="6" autocomplete="new-password">
+      <label for="password">New password (reset)</label>
+      <input id="password" name="password" type="password" required minlength="6" autocomplete="new-password"
+             placeholder="at least 6 characters">
     </div>
     <div class="actions">
       <button type="submit">Set new password</button>
@@ -131,27 +148,39 @@ us_header('Users', $user, $company, $school);
 <?php endif; ?>
 
 <section class="grid grid-2">
-  <div>
-    <h2 style="font-size:1.1rem;margin:0 0 0.75rem">Create staff user</h2>
+  <div style="padding:1rem;border:1px solid var(--line);border-radius:12px;background:#fff">
+    <h2 style="font-size:1.2rem;margin:0 0 0.75rem">Create staff user</h2>
     <form method="post" class="grid">
       <input type="hidden" name="action" value="create">
       <div>
-        <label for="username">Username</label>
-        <input id="username" name="username" required autocomplete="off" placeholder="e.g. ravi">
+        <label for="username">Username (you choose)</label>
+        <input id="username" name="username" required autocomplete="off" placeholder="e.g. ravi"
+               value="<?= us_h((string) ($_POST['username'] ?? '')) ?>">
       </div>
       <div>
         <label for="new_password">Password</label>
-        <input id="new_password" name="password" type="password" required minlength="6" autocomplete="new-password">
+        <input id="new_password" name="password" type="password" required minlength="6" autocomplete="new-password"
+               placeholder="at least 6 characters">
       </div>
-      <fieldset style="border:1px solid var(--line);border-radius:10px;padding:0.75rem 1rem">
-        <legend>Assign companies</legend>
+      <fieldset class="assign-box">
+        <legend>Assign companies (tick at least one)</legend>
         <?php if ($allCompanies === []): ?>
-          <p class="muted">Create a company first on the Companies page.</p>
+          <p class="muted">Create a company first on the Companies page, then return here.</p>
         <?php else: ?>
-          <?php foreach ($allCompanies as $c): ?>
-            <label style="font-weight:500;display:flex;gap:0.5rem;align-items:center;margin:0.35rem 0">
-              <input type="checkbox" name="company_ids[]" value="<?= (int) $c['id'] ?>" style="width:auto">
-              <?= us_h($c['name']) ?>
+          <?php foreach ($allCompanies as $c):
+              $cid = (int) $c['id'];
+              $checked = false;
+              if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['action'] ?? '') === 'create') {
+                  $posted = $_POST['company_ids'] ?? [];
+                  $checked = is_array($posted) && in_array((string) $cid, array_map('strval', $posted), true);
+              } else {
+                  // Default: current company, or the only company.
+                  $checked = ($currentCompanyId === $cid) || count($allCompanies) === 1;
+              }
+          ?>
+            <label class="assign-row">
+              <input type="checkbox" name="company_ids[]" value="<?= $cid ?>" <?= $checked ? 'checked' : '' ?>>
+              <span><?= us_h($c['name']) ?><?= $currentCompanyId === $cid ? ' (current)' : '' ?></span>
             </label>
           <?php endforeach; ?>
         <?php endif; ?>
@@ -161,10 +190,10 @@ us_header('Users', $user, $company, $school);
       </div>
     </form>
   </div>
-  <div>
-    <h2 style="font-size:1.1rem;margin:0 0 0.75rem">Staff users</h2>
+  <div style="padding:1rem;border:1px solid var(--line);border-radius:12px;background:#fff">
+    <h2 style="font-size:1.2rem;margin:0 0 0.75rem">Staff users (<?= count($staff) ?>)</h2>
     <?php if ($staff === []): ?>
-      <p class="muted">No staff users yet.</p>
+      <p class="muted">No staff users yet. Use the form on the left — that is how staff accounts are created.</p>
     <?php else: ?>
       <table>
         <thead>
@@ -181,10 +210,10 @@ us_header('Users', $user, $company, $school);
               }
           ?>
             <tr>
-              <td><?= us_h($s['username']) ?></td>
+              <td><strong><?= us_h($s['username']) ?></strong></td>
               <td class="muted"><?= us_h($names === [] ? '—' : implode(', ', $names)) ?></td>
               <td class="row-actions">
-                <a class="btn secondary" href="<?= us_h(us_url('users.php?edit=' . (int) $s['id'])) ?>">Edit</a>
+                <a class="btn secondary" href="<?= us_h(us_url('users.php?edit=' . (int) $s['id'])) ?>">Edit / reset password</a>
                 <form method="post" style="display:inline" onsubmit="return confirm('Delete staff user <?= us_h($s['username']) ?>?');">
                   <input type="hidden" name="action" value="delete">
                   <input type="hidden" name="user_id" value="<?= (int) $s['id'] ?>">

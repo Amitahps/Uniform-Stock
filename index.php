@@ -59,6 +59,17 @@ try {
     <a href="<?= us_h(us_url('select_company.php')) ?>">Switch company</a>
   <?php endif; ?>
 </p>
+<?php if (us_is_admin($user)): ?>
+<div class="flash flash-warn" style="margin-bottom:1rem">
+  <strong>Staff users:</strong> open <a href="<?= us_h(us_url('users.php')) ?>"><strong>Users</strong></a>
+  to create a staff username/password and assign companies.
+  Staff log in on the Login page; they will <strong>not</strong> see Companies, Users, Backup, or Password.
+</div>
+<?php else: ?>
+<div class="flash flash-ok" style="margin-bottom:1rem">
+  Signed in as <strong>staff</strong>. You can work Items / Stock / Reports for your assigned companies only.
+</div>
+<?php endif; ?>
 <ul class="card-list">
   <li><strong><?= (int) $totalSkus ?></strong> SKUs · <strong><?= (int) $units ?></strong> units on hand</li>
   <li>
@@ -72,6 +83,9 @@ try {
   <a class="btn" href="<?= us_h(us_url('stock_in.php')) ?>">Stock in</a>
   <a class="btn secondary" href="<?= us_h(us_url('stock_out.php')) ?>">Stock out</a>
   <a class="btn secondary" href="<?= us_h(us_url('reports.php')) ?>">Reports</a>
+  <?php if (us_is_admin($user)): ?>
+    <a class="btn secondary" href="<?= us_h(us_url('users.php')) ?>">Users (staff)</a>
+  <?php endif; ?>
 </div>
     <?php
     us_footer();

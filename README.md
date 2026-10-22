@@ -44,9 +44,10 @@ Health check: `http://127.0.0.1:8080/check.php`
 2. Connect GitHub → repository **`Amitahps/Uniform-Stock`** → deploy into that site’s `public_html` (document root). Use **Redeploy** after each push to `main` if auto-deploy lags.
 3. Ensure PHP 8+ and **pdo_sqlite** are enabled for the site.
 4. Make `data/` writable by the web user (chmod 775 or Hostinger file manager permissions). The app creates `data/stock.db` on first request.
-5. Open `https://YOUR-DOMAIN/check.php` — all checks should pass, and **App version** must match the footer (`US_APP_VERSION`, e.g. `20261022-school-tabs-v2`). If the version is missing/old, click **Redeploy** on Hostinger Git for `main`.
+5. Open `https://YOUR-DOMAIN/check.php` — all checks should pass, and **App version** must match the footer (`US_APP_VERSION`, e.g. `20261022-staff-v3`). If the version is missing/old, click **Redeploy** on Hostinger Git for `main`.
 6. Sign in at `/login.php` with `admin` / `admin123`, select a company — large **Bachpan** | **AHP.S** buttons appear at the **very top**. Admin nav includes **Users**.
-7. Change the password under Password.
+7. **Users** → create staff (username, password, tick companies) → log out → sign in as staff to verify nav (no Companies/Users/Backup/Password).
+8. Change the admin password under Password.
 
 No Composer or Node build step. Upload / Git sync of these PHP files is enough.
 
