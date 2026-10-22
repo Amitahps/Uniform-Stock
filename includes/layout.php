@@ -32,21 +32,21 @@ function us_header(string $title, ?array $user = null, ?array $company = null): 
     echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">';
     echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
     echo '<title>' . us_h($pageTitle) . '</title>';
-    echo '<link rel="stylesheet" href="assets/style.css">';
+    echo '<link rel="stylesheet" href="' . us_h(us_url('assets/style.css')) . '">';
     echo '</head><body>';
     echo '<div class="wrap">';
     echo '<header class="top">';
-    echo '<div class="brand"><a href="index.php">' . us_h(US_APP_NAME) . '</a></div>';
+    echo '<div class="brand"><a href="' . us_h(us_url('index.php')) . '">' . us_h(US_APP_NAME) . '</a></div>';
     if ($user) {
         echo '<nav class="nav">';
-        echo '<a href="companies.php">Companies</a>';
-        echo '<a href="items.php">Items</a>';
-        echo '<a href="stock_in.php">Stock in</a>';
-        echo '<a href="stock_out.php">Stock out</a>';
-        echo '<a href="reports.php">Reports</a>';
-        echo '<a href="deficit.php">Deficit</a>';
-        echo '<a href="password.php">Password</a>';
-        echo '<a href="logout.php">Logout</a>';
+        echo '<a href="' . us_h(us_url('companies.php')) . '">Companies</a>';
+        echo '<a href="' . us_h(us_url('items.php')) . '">Items</a>';
+        echo '<a href="' . us_h(us_url('stock_in.php')) . '">Stock in</a>';
+        echo '<a href="' . us_h(us_url('stock_out.php')) . '">Stock out</a>';
+        echo '<a href="' . us_h(us_url('reports.php')) . '">Reports</a>';
+        echo '<a href="' . us_h(us_url('deficit.php')) . '">Deficit</a>';
+        echo '<a href="' . us_h(us_url('password.php')) . '">Password</a>';
+        echo '<a href="' . us_h(us_url('logout.php')) . '">Logout</a>';
         echo '</nav>';
         echo '<div class="who">';
         if ($company) {

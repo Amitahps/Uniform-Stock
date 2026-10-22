@@ -1,45 +1,68 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/includes/company.php';
-require_once __DIR__ . '/includes/layout.php';
+require_once __DIR__ . '/includes/bootstrap.php';
+require_once __DIR__ . '/includes/auth.php';
 
-$ctx = us_require_company();
-$user = $ctx['user'];
-$company = $ctx['company'];
-$companyId = (int) $company['id'];
-$pdo = us_db();
-$rows = us_stock_rows($pdo, $companyId);
-$totalSkus = count($rows);
-$low = 0;
-$units = 0;
-foreach ($rows as $r) {
-    $q = (int) $r['on_hand'];
-    $units += $q;
-    if ($q < US_DEFICIT_THRESHOLD) {
-        $low++;
+// Never white-screen: redirect guests before touching the DB.
+try {
+    us_start_session();
+    if (empty($_SESSION['user_id'])) {
+        header('Location: ' . us_url('login.php'));
+        exit;
     }
+} catch (Throwable $e) {
+    us_fail_page('Session error', $e->getMessage());
 }
 
-us_header('Dashboard', $user, $company);
-?>
+try {
+    require_once __DIR__ . '/includes/company.php';
+    require_once __DIR__ . '/includes/layout.php';
+
+    $ctx = us_require_company();
+    $user = $ctx['user'];
+    $company = $ctx['company'];
+    $companyId = (int) $company['id'];
+    $pdo = us_db();
+    $rows = us_stock_rows($pdo, $companyId);
+    $totalSkus = count($rows);
+    $low = 0;
+    $units = 0;
+    foreach ($rows as $r) {
+        $q = (int) $r['on_hand'];
+        $units += $q;
+        if ($q < US_DEFICIT_THRESHOLD) {
+            $low++;
+        }
+    }
+
+    us_header('Dashboard', $user, $company);
+    ?>
 <p class="lead">
   Working in <strong><?= us_h($company['name']) ?></strong>.
   Receive bills, issue stock, and review on-hand balances for this company only.
-  <a href="companies.php">Switch company</a>
+  <a href="<?= us_h(us_url('companies.php')) ?>">Switch company</a>
 </p>
 <ul class="card-list">
   <li><strong><?= (int) $totalSkus ?></strong> SKUs · <strong><?= (int) $units ?></strong> units on hand</li>
   <li>
     Deficit (qty &lt; <?= (int) US_DEFICIT_THRESHOLD ?>):
     <strong class="<?= $low > 0 ? 'low' : '' ?>"><?= (int) $low ?></strong>
-    — <a href="deficit.php">view list</a>
+    — <a href="<?= us_h(us_url('deficit.php')) ?>">view list</a>
   </li>
 </ul>
 <div class="actions">
-  <a class="btn secondary" href="items.php">Items</a>
-  <a class="btn" href="stock_in.php">Stock in</a>
-  <a class="btn secondary" href="stock_out.php">Stock out</a>
-  <a class="btn secondary" href="reports.php">Reports</a>
+  <a class="btn secondary" href="<?= us_h(us_url('items.php')) ?>">Items</a>
+  <a class="btn" href="<?= us_h(us_url('stock_in.php')) ?>">Stock in</a>
+  <a class="btn secondary" href="<?= us_h(us_url('stock_out.php')) ?>">Stock out</a>
+  <a class="btn secondary" href="<?= us_h(us_url('reports.php')) ?>">Reports</a>
 </div>
-<?php us_footer(); ?>
+    <?php
+    us_footer();
+} catch (Throwable $e) {
+    us_fail_page(
+        'Database error',
+        'Could not open or migrate the stock database: ' . $e->getMessage()
+        . ' Open /check.php after fixing data/ permissions, or contact support if this persists.'
+    );
+}

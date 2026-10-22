@@ -8,3 +8,5 @@ define('US_DEFAULT_USER', 'admin');
 define('US_DEFAULT_PASS', 'admin123');
 define('US_DATA_DIR', dirname(__DIR__) . '/data');
 define('US_DB_PATH', US_DATA_DIR . '/stock.db');
+
+require_once __DIR__ . '/paths.php';

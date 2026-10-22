@@ -34,7 +34,7 @@ function us_require_company(): array
     $company = $id ? us_get_company($pdo, $id) : null;
     if (!$company) {
         us_set_company_id(null);
-        header('Location: companies.php');
+        header('Location: ' . us_url('companies.php'));
         exit;
     }
     return ['user' => $user, 'company' => $company];

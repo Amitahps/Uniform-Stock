@@ -33,7 +33,7 @@ function us_require_login(): array
 {
     $user = us_user();
     if (!$user) {
-        header('Location: login.php');
+        header('Location: ' . us_url('login.php'));
         exit;
     }
     return $user;
