@@ -537,7 +537,10 @@ function us_create_sku(PDO $pdo, int $companyId, string $itemNo, string $itemNam
     $find = $pdo->prepare('SELECT id FROM skus WHERE company_id = ? AND item_no = ? AND size = ?');
     $find->execute([$companyId, $itemNo, $size]);
     if ($find->fetch()) {
-        throw new RuntimeException('Item code "' . $itemNo . '" with size "' . $size . '" is already registered for this company.');
+        throw new RuntimeException(
+            'Item code "' . $itemNo . '" with size "' . $size . '" already exists for this company. '
+            . 'Enter a different size for this code, or a different item code.'
+        );
     }
 
     // Same item code, new size: keep the existing display name for that code.
