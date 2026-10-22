@@ -19,10 +19,34 @@ function us_db(): PDO
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     ]);
 
-    // Keep FKs off while migrating — SQLite refuses DROP/ALTER of parents when FKs are on.
+    // Keep FKs off while migrating — SQLite refuses DROP of parents when FKs are on.
     $pdo->exec('PRAGMA foreign_keys = OFF');
-    us_migrate($pdo);
+    try {
+        us_migrate($pdo);
+    } catch (Throwable $first) {
+        // One more pass after aggressive leftover cleanup (half-broken mid-DROP DBs).
+        us_drop_migrate_leftovers($pdo);
+        try {
+            us_migrate($pdo);
+        } catch (Throwable $second) {
+            throw new RuntimeException(
+                'Database migrate failed: ' . $second->getMessage()
+                . ' If this persists on Hostinger, delete only data/stock.db (keep the data/ folder),'
+                . ' then reload /check.php — a fresh DB will be created. Original error: '
+                . $first->getMessage(),
+                0,
+                $second
+            );
+        }
+    }
     $pdo->exec('PRAGMA foreign_keys = ON');
+
+    // Soft integrity probe (does not throw on empty).
+    try {
+        $pdo->query('PRAGMA foreign_key_check')->fetchAll();
+    } catch (Throwable $e) {
+        // Ignore — some hosts dislike this pragma.
+    }
 
     return $pdo;
 }
@@ -46,6 +70,14 @@ function us_table_columns(PDO $pdo, string $table): array
     return $cols;
 }
 
+function us_table_row_count(PDO $pdo, string $table): int
+{
+    if (!us_table_exists($pdo, $table)) {
+        return 0;
+    }
+    return (int) $pdo->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn();
+}
+
 function us_ensure_default_company(PDO $pdo): int
 {
     $pdo->exec("INSERT INTO companies (name) SELECT 'Default' WHERE NOT EXISTS (SELECT 1 FROM companies LIMIT 1)");
@@ -55,6 +87,51 @@ function us_ensure_default_company(PDO $pdo): int
         $id = (int) $pdo->lastInsertId();
     }
     return $id;
+}
+
+/** Drop leftover *_new tables from a failed migrate (FK must be OFF). */
+function us_drop_migrate_leftovers(PDO $pdo): void
+{
+    foreach (['skus_new', 'receipts_new', 'issues_new', 'skus_old', 'receipts_old', 'issues_old'] as $t) {
+        $pdo->exec('DROP TABLE IF EXISTS ' . $t);
+    }
+}
+
+/**
+ * Recover mid-DROP / mid-RENAME leftovers before normal migrate.
+ * Cases:
+ * - only foo_new exists → rename to foo
+ * - both foo and foo_new exist, foo_new already has company_id → prefer foo_new, drop foo, rename
+ * - both exist but foo_new is incomplete → drop foo_new (rebuild later)
+ */
+function us_recover_half_broken(PDO $pdo): void
+{
+    foreach (['skus', 'receipts', 'issues'] as $table) {
+        $newName = $table . '_new';
+        $has = us_table_exists($pdo, $table);
+        $hasNew = us_table_exists($pdo, $newName);
+
+        if (!$has && $hasNew) {
+            $pdo->exec("ALTER TABLE {$newName} RENAME TO {$table}");
+            continue;
+        }
+
+        if ($has && $hasNew) {
+            $newCols = us_table_columns($pdo, $newName);
+            $oldCols = us_table_columns($pdo, $table);
+            $newHasCompany = in_array('company_id', $newCols, true);
+            $oldHasCompany = in_array('company_id', $oldCols, true);
+            $newCount = us_table_row_count($pdo, $newName);
+            $oldCount = us_table_row_count($pdo, $table);
+
+            if ($newHasCompany && (!$oldHasCompany || $newCount >= $oldCount)) {
+                $pdo->exec('DROP TABLE ' . $table);
+                $pdo->exec("ALTER TABLE {$newName} RENAME TO {$table}");
+            } else {
+                $pdo->exec('DROP TABLE ' . $newName);
+            }
+        }
+    }
 }
 
 function us_migrate(PDO $pdo): void
@@ -74,12 +151,14 @@ CREATE TABLE IF NOT EXISTS companies (
 );
 SQL);
 
+    us_recover_half_broken($pdo);
     $companyId = us_ensure_default_company($pdo);
 
-    // SKUs
-    $skuCols = us_table_columns($pdo, 'skus');
-    if ($skuCols === []) {
-        $pdo->exec(<<<'SQL'
+    us_ensure_company_scoped_table(
+        $pdo,
+        'skus',
+        $companyId,
+        <<<'SQL'
 CREATE TABLE skus (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     company_id INTEGER NOT NULL,
@@ -90,10 +169,8 @@ CREATE TABLE skus (
     UNIQUE(company_id, item_no, size),
     FOREIGN KEY (company_id) REFERENCES companies(id)
 );
-SQL);
-    } elseif (!in_array('company_id', $skuCols, true)) {
-        $created = in_array('created_at', $skuCols, true) ? 'created_at' : "datetime('now')";
-        us_rebuild_table_with_company($pdo, 'skus', <<<'SQL'
+SQL,
+        <<<'SQL'
 CREATE TABLE skus_new (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     company_id INTEGER NOT NULL,
@@ -104,13 +181,22 @@ CREATE TABLE skus_new (
     UNIQUE(company_id, item_no, size),
     FOREIGN KEY (company_id) REFERENCES companies(id)
 );
-SQL, 'id, company_id, item_no, item_name, size, created_at', "id, {$companyId}, item_no, item_name, size, {$created}");
-    }
+SQL,
+        'id, company_id, item_no, item_name, size, created_at',
+        static function (array $cols, int $companyId): string {
+            $created = in_array('created_at', $cols, true) ? 'created_at' : "datetime('now')";
+            $itemNo = in_array('item_no', $cols, true) ? 'item_no' : "''";
+            $itemName = in_array('item_name', $cols, true) ? 'item_name' : "''";
+            $size = in_array('size', $cols, true) ? 'size' : "''";
+            return "id, {$companyId}, {$itemNo}, {$itemName}, {$size}, {$created}";
+        }
+    );
 
-    // Receipts
-    $receiptCols = us_table_columns($pdo, 'receipts');
-    if ($receiptCols === []) {
-        $pdo->exec(<<<'SQL'
+    us_ensure_company_scoped_table(
+        $pdo,
+        'receipts',
+        $companyId,
+        <<<'SQL'
 CREATE TABLE receipts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     company_id INTEGER NOT NULL,
@@ -120,10 +206,8 @@ CREATE TABLE receipts (
     UNIQUE(company_id, bill_no),
     FOREIGN KEY (company_id) REFERENCES companies(id)
 );
-SQL);
-    } elseif (!in_array('company_id', $receiptCols, true)) {
-        $created = in_array('created_at', $receiptCols, true) ? 'created_at' : "datetime('now')";
-        us_rebuild_table_with_company($pdo, 'receipts', <<<'SQL'
+SQL,
+        <<<'SQL'
 CREATE TABLE receipts_new (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     company_id INTEGER NOT NULL,
@@ -133,13 +217,21 @@ CREATE TABLE receipts_new (
     UNIQUE(company_id, bill_no),
     FOREIGN KEY (company_id) REFERENCES companies(id)
 );
-SQL, 'id, company_id, bill_no, receipt_date, created_at', "id, {$companyId}, bill_no, receipt_date, {$created}");
-    }
+SQL,
+        'id, company_id, bill_no, receipt_date, created_at',
+        static function (array $cols, int $companyId): string {
+            $created = in_array('created_at', $cols, true) ? 'created_at' : "datetime('now')";
+            $bill = in_array('bill_no', $cols, true) ? 'bill_no' : "''";
+            $date = in_array('receipt_date', $cols, true) ? 'receipt_date' : "date('now')";
+            return "id, {$companyId}, {$bill}, {$date}, {$created}";
+        }
+    );
 
-    // Issues
-    $issueCols = us_table_columns($pdo, 'issues');
-    if ($issueCols === []) {
-        $pdo->exec(<<<'SQL'
+    us_ensure_company_scoped_table(
+        $pdo,
+        'issues',
+        $companyId,
+        <<<'SQL'
 CREATE TABLE issues (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     company_id INTEGER NOT NULL,
@@ -147,10 +239,8 @@ CREATE TABLE issues (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (company_id) REFERENCES companies(id)
 );
-SQL);
-    } elseif (!in_array('company_id', $issueCols, true)) {
-        $created = in_array('created_at', $issueCols, true) ? 'created_at' : "datetime('now')";
-        us_rebuild_table_with_company($pdo, 'issues', <<<'SQL'
+SQL,
+        <<<'SQL'
 CREATE TABLE issues_new (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     company_id INTEGER NOT NULL,
@@ -158,10 +248,15 @@ CREATE TABLE issues_new (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (company_id) REFERENCES companies(id)
 );
-SQL, 'id, company_id, issue_date, created_at', "id, {$companyId}, issue_date, {$created}");
-    }
+SQL,
+        'id, company_id, issue_date, created_at',
+        static function (array $cols, int $companyId): string {
+            $created = in_array('created_at', $cols, true) ? 'created_at' : "datetime('now')";
+            $date = in_array('issue_date', $cols, true) ? 'issue_date' : "date('now')";
+            return "id, {$companyId}, {$date}, {$created}";
+        }
+    );
 
-    // Line tables (no company_id; create if missing)
     if (!us_table_exists($pdo, 'receipt_lines')) {
         $pdo->exec(<<<'SQL'
 CREATE TABLE receipt_lines (
@@ -187,16 +282,46 @@ CREATE TABLE issue_lines (
 SQL);
     }
 
-    // Repair orphan company_id values if any
-    $pdo->exec('UPDATE skus SET company_id = ' . (int) $companyId . ' WHERE company_id IS NULL OR company_id = 0 OR company_id NOT IN (SELECT id FROM companies)');
-    $pdo->exec('UPDATE receipts SET company_id = ' . (int) $companyId . ' WHERE company_id IS NULL OR company_id = 0 OR company_id NOT IN (SELECT id FROM companies)');
-    $pdo->exec('UPDATE issues SET company_id = ' . (int) $companyId . ' WHERE company_id IS NULL OR company_id = 0 OR company_id NOT IN (SELECT id FROM companies)');
+    // Backfill / repair orphan company_id values.
+    foreach (['skus', 'receipts', 'issues'] as $t) {
+        $cols = us_table_columns($pdo, $t);
+        if (in_array('company_id', $cols, true)) {
+            $pdo->exec(
+                "UPDATE {$t} SET company_id = " . (int) $companyId
+                . " WHERE company_id IS NULL OR company_id = 0 OR company_id NOT IN (SELECT id FROM companies)"
+            );
+        }
+    }
 
     $count = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
     if ($count === 0) {
         $stmt = $pdo->prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)');
         $stmt->execute([US_DEFAULT_USER, password_hash(US_DEFAULT_PASS, PASSWORD_DEFAULT)]);
     }
+}
+
+/**
+ * @param callable(array,int):string $selectBuilder
+ */
+function us_ensure_company_scoped_table(
+    PDO $pdo,
+    string $table,
+    int $companyId,
+    string $createFreshSql,
+    string $createNewSql,
+    string $insertCols,
+    callable $selectBuilder
+): void {
+    $cols = us_table_columns($pdo, $table);
+    if ($cols === []) {
+        $pdo->exec($createFreshSql);
+        return;
+    }
+    if (in_array('company_id', $cols, true)) {
+        return;
+    }
+    $selectExpr = $selectBuilder($cols, $companyId);
+    us_rebuild_table_with_company($pdo, $table, $createNewSql, $insertCols, $selectExpr);
 }
 
 /**
@@ -210,7 +335,6 @@ function us_rebuild_table_with_company(
     string $selectExpr
 ): void {
     $newName = $table . '_new';
-    // Drop leftover from a previous failed migrate.
     $pdo->exec('DROP TABLE IF EXISTS ' . $newName);
     $pdo->exec($createNewSql);
     $pdo->exec("INSERT INTO {$newName} ({$insertCols}) SELECT {$selectExpr} FROM {$table}");

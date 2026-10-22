@@ -85,6 +85,17 @@ foreach ($checks as $c) {
           </li>
         <?php endforeach; ?>
       </ul>
+      <?php if (!$dbOk): ?>
+        <div class="flash flash-error" style="margin-top:1rem;padding:0.85rem 1rem;border:1px solid #f0c2c2;background:#fdeceb;border-radius:10px;color:#9b2c2c">
+          <strong>If SQLite still fails after a Redeploy</strong>
+          <ol style="margin:0.5rem 0 0;padding-left:1.2rem">
+            <li>Confirm Hostinger Git deployed the latest <code>main</code> commit.</li>
+            <li>In File Manager, open the site <code>data/</code> folder and <strong>delete only</strong> <code>stock.db</code> (and <code>stock.db-*</code> if present). Keep the <code>data/</code> folder.</li>
+            <li>Reload this page — the app recreates a fresh database automatically.</li>
+          </ol>
+          <p style="margin:0.6rem 0 0">Do not delete files from school-fee-erp or Badminton.</p>
+        </div>
+      <?php endif; ?>
       <p><a href="<?= htmlspecialchars(us_url('login.php'), ENT_QUOTES, 'UTF-8') ?>">Go to login</a></p>
     </main>
   </div>
