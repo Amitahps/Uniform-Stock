@@ -1,0 +1,99 @@
+:root {
+  --bg: #f3efe6;
+  --ink: #1c2a24;
+  --muted: #5b6b63;
+  --panel: #fffdf8;
+  --line: #d7d0c2;
+  --accent: #0f6b4c;
+  --accent-ink: #ffffff;
+  --danger: #9b2c2c;
+  --warn: #8a5a00;
+  --ok: #0f6b4c;
+  --shadow: 0 10px 30px rgba(28, 42, 36, 0.08);
+  --radius: 12px;
+  --font: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 500px at 10% -10%, #d9efe4 0%, transparent 55%),
+    radial-gradient(900px 400px at 100% 0%, #efe3c8 0%, transparent 50%),
+    var(--bg);
+  min-height: 100vh;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.wrap { max-width: 1100px; margin: 0 auto; padding: 1.25rem 1rem 2.5rem; }
+.top {
+  display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; align-items: center;
+  margin-bottom: 1rem; padding: 0.85rem 1rem; background: var(--panel);
+  border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.brand a { font-weight: 700; font-size: 1.15rem; color: var(--ink); text-decoration: none; }
+.nav { display: flex; flex-wrap: wrap; gap: 0.75rem 1rem; flex: 1; }
+.nav a { color: var(--muted); font-weight: 600; }
+.nav a:hover { color: var(--accent); }
+.who { color: var(--muted); font-size: 0.95rem; }
+
+.main {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 1.25rem 1.25rem 1.5rem;
+}
+h1 { margin: 0 0 0.35rem; font-size: 1.55rem; }
+.lead { color: var(--muted); margin: 0 0 1.25rem; }
+
+.flash {
+  margin: 0 0 1rem; padding: 0.75rem 1rem; border-radius: 10px; border: 1px solid var(--line);
+}
+.flash-ok { background: #e7f6ef; color: var(--ok); border-color: #b7e0cb; }
+.flash-error { background: #fdeceb; color: var(--danger); border-color: #f0c2c2; }
+.flash-warn { background: #fff6e5; color: var(--warn); border-color: #f0d9a0; }
+
+.grid { display: grid; gap: 1rem; }
+.grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 720px) { .grid-2 { grid-template-columns: 1fr; } }
+
+label { display: block; font-weight: 600; margin-bottom: 0.35rem; }
+input, select, button, textarea {
+  font: inherit; width: 100%; padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line); border-radius: 8px; background: #fff;
+}
+button, .btn {
+  display: inline-block; width: auto; cursor: pointer; background: var(--accent);
+  color: var(--accent-ink); border-color: var(--accent); font-weight: 700;
+  padding: 0.6rem 1rem; text-decoration: none; border-radius: 8px;
+}
+button.secondary, .btn.secondary { background: #fff; color: var(--ink); border-color: var(--line); }
+button:hover, .btn:hover { filter: brightness(0.96); text-decoration: none; }
+.actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1rem; }
+
+table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; }
+th, td { text-align: left; padding: 0.55rem 0.45rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.low { color: var(--danger); font-weight: 700; }
+.card-list { list-style: none; padding: 0; margin: 1rem 0 0; display: grid; gap: 0.75rem; }
+.card-list li {
+  border: 1px solid var(--line); border-radius: 10px; padding: 0.9rem 1rem; background: #fff;
+}
+.line-rows { display: grid; gap: 0.75rem; margin-top: 0.75rem; }
+.line-row {
+  display: grid; gap: 0.6rem;
+  grid-template-columns: 1.4fr 1fr 0.8fr 0.7fr auto;
+  align-items: end; padding: 0.75rem; border: 1px dashed var(--line); border-radius: 10px;
+}
+@media (max-width: 900px) {
+  .line-row { grid-template-columns: 1fr 1fr; }
+  .line-row .remove { grid-column: 1 / -1; }
+}
+.foot { margin-top: 1rem; color: var(--muted); text-align: center; }
+.login-box { max-width: 420px; margin: 2rem auto; }
+.checks { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92rem; }
+.ok { color: var(--ok); }
+.bad { color: var(--danger); }
