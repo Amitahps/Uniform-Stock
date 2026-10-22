@@ -9,7 +9,6 @@ $user = $ctx['user'];
 $company = $ctx['company'];
 $companyId = (int) $company['id'];
 $pdo = us_db();
-$catalog = us_item_catalog($pdo, $companyId);
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -45,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         foreach ($lines as $line) {
             if ($line['sku_id'] <= 0 || $line['qty'] < 1) {
-                $error = 'Each line needs an existing item/size and quantity ≥ 1.';
+                $error = 'Each line needs item name, item code, size, and quantity ≥ 1.';
                 break;
             }
             if (!us_get_sku($pdo, $line['sku_id'], $companyId)) {
@@ -67,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $pdo->commit();
             us_flash_set('ok', 'Bill ' . $billNo . ' saved (' . count($lines) . ' line(s)).');
-            header('Location: stock_in.php');
+            header('Location: ' . us_url('stock_in.php'));
             exit;
         } catch (PDOException $e) {
             if ($pdo->inTransaction()) {
@@ -82,22 +81,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$itemNos = array_keys($catalog);
+$skus = us_stock_rows($pdo, $companyId);
+
+/** @var array<string, array{codes: array<string, list<array{sku_id:int,size:string,on_hand:int}>>>} $byName */
+$byName = [];
+foreach ($skus as $row) {
+    $name = (string) $row['item_name'];
+    $code = (string) $row['item_no'];
+    if (!isset($byName[$name])) {
+        $byName[$name] = ['codes' => []];
+    }
+    if (!isset($byName[$name]['codes'][$code])) {
+        $byName[$name]['codes'][$code] = [];
+    }
+    $byName[$name]['codes'][$code][] = [
+        'sku_id' => (int) $row['id'],
+        'size' => (string) $row['size'],
+        'on_hand' => (int) $row['on_hand'],
+    ];
+}
+ksort($byName, SORT_NATURAL | SORT_FLAG_CASE);
+$itemNames = array_keys($byName);
+
 us_header('Stock in', $user, $company);
 ?>
 <p class="lead">
   Company: <strong><?= us_h($company['name']) ?></strong>.
-  Enter bill number, select registered item code (name and size fill automatically), enter quantity only.
-  Register new items under <a href="<?= us_h(us_url('items.php')) ?>">Items</a> first.
+  Select <strong>item name</strong>, then choose <strong>item code</strong> and <strong>size</strong> for that name, enter quantity, and save.
+  Register items under <a href="<?= us_h(us_url('items.php')) ?>">Items</a> first.
 </p>
 <?php if ($error !== ''): ?>
   <div class="flash flash-error"><?= us_h($error) ?></div>
 <?php endif; ?>
 
-<?php if (!$catalog): ?>
+<?php if ($itemNames === []): ?>
   <div class="flash flash-warn">
     No items registered for this company.
-    <a href="<?= us_h(us_url('items.php')) ?>">Add an item</a> (name, item code, size) once, then receive stock here.
+    <a href="<?= us_h(us_url('items.php')) ?>">Add an item</a> first, then receive stock here.
   </div>
 <?php else: ?>
 <form method="post" id="stock_in_form">
@@ -122,36 +142,41 @@ us_header('Stock in', $user, $company);
     for ($i = 0; $i < $count; $i++):
         $selectedSku = (int) ($_POST['sku_id'][$i] ?? 0);
         $qty = (string) ($_POST['quantity'][$i] ?? '');
-        $selectedItemNo = '';
+        $selectedName = '';
+        $selectedCode = '';
         if ($selectedSku > 0) {
             $skuRow = us_get_sku($pdo, $selectedSku, $companyId);
             if ($skuRow) {
-                $selectedItemNo = (string) $skuRow['item_no'];
+                $selectedName = (string) $skuRow['item_name'];
+                $selectedCode = (string) $skuRow['item_no'];
             }
         }
     ?>
     <div class="line-row stock-in-row">
       <div>
         <label>Item name</label>
-        <input type="text" class="item-name-display" readonly tabindex="-1" value="">
-      </div>
-      <div>
-        <label>Item code</label>
-        <select class="item-no-select" required>
-          <option value="">Select…</option>
-          <?php foreach ($itemNos as $no): ?>
-            <option value="<?= us_h($no) ?>" <?= $selectedItemNo === $no ? 'selected' : '' ?>>
-              <?= us_h($catalog[$no]['item_name'] . ' · ' . $no) ?>
+        <select class="item-name-select" required>
+          <option value="">Select name…</option>
+          <?php foreach ($itemNames as $name): ?>
+            <option value="<?= us_h($name) ?>" <?= $selectedName === $name ? 'selected' : '' ?>>
+              <?= us_h($name) ?>
             </option>
           <?php endforeach; ?>
         </select>
       </div>
       <div>
+        <label>Item code</label>
+        <select class="item-code-select" required>
+          <option value="">Select name first…</option>
+        </select>
+      </div>
+      <div>
         <label>Size</label>
         <select class="size-select" required>
-          <option value="">Select item code first…</option>
+          <option value="">Select code first…</option>
         </select>
-        <input type="hidden" name="sku_id[]" class="sku-id-input" value="<?= $selectedSku > 0 ? (int) $selectedSku : '' ?>">
+        <input type="hidden" name="sku_id[]" class="sku-id-input" value="<?= $selectedSku > 0 ? (int) $selectedSku : '' ?>"
+               data-pref-name="<?= us_h($selectedName) ?>" data-pref-code="<?= us_h($selectedCode) ?>">
       </div>
       <div>
         <label>Qty</label>
@@ -174,21 +199,23 @@ us_header('Stock in', $user, $company);
   <div class="line-row stock-in-row">
     <div>
       <label>Item name</label>
-      <input type="text" class="item-name-display" readonly tabindex="-1" value="">
+      <select class="item-name-select" required>
+        <option value="">Select name…</option>
+        <?php foreach ($itemNames as $name): ?>
+          <option value="<?= us_h($name) ?>"><?= us_h($name) ?></option>
+        <?php endforeach; ?>
+      </select>
     </div>
     <div>
       <label>Item code</label>
-      <select class="item-no-select" required>
-        <option value="">Select…</option>
-        <?php foreach ($itemNos as $no): ?>
-          <option value="<?= us_h($no) ?>"><?= us_h($catalog[$no]['item_name'] . ' · ' . $no) ?></option>
-        <?php endforeach; ?>
+      <select class="item-code-select" required>
+        <option value="">Select name first…</option>
       </select>
     </div>
     <div>
       <label>Size</label>
       <select class="size-select" required>
-        <option value="">Select item code first…</option>
+        <option value="">Select code first…</option>
       </select>
       <input type="hidden" name="sku_id[]" class="sku-id-input" value="">
     </div>
@@ -204,39 +231,68 @@ us_header('Stock in', $user, $company);
 
 <script>
 (function () {
-  const catalog = <?= json_encode($catalog, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;
+  const byName = <?= json_encode($byName, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;
   const rows = document.getElementById('line_rows');
   const template = document.getElementById('line_template');
 
-  function fillRow(row, preferredSkuId) {
-    const itemSel = row.querySelector('.item-no-select');
-    const nameEl = row.querySelector('.item-name-display');
+  function resetSelect(sel, placeholder) {
+    sel.innerHTML = '';
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = placeholder;
+    sel.appendChild(opt);
+    sel.disabled = false;
+  }
+
+  function fillCodes(row, preferredCode) {
+    const nameSel = row.querySelector('.item-name-select');
+    const codeSel = row.querySelector('.item-code-select');
     const sizeSel = row.querySelector('.size-select');
     const skuInput = row.querySelector('.sku-id-input');
-    const itemNo = itemSel.value;
-    sizeSel.innerHTML = '';
+    const name = nameSel.value;
+    resetSelect(codeSel, name ? 'Select item code…' : 'Select name first…');
+    resetSelect(sizeSel, 'Select code first…');
     skuInput.value = '';
 
-    if (!itemNo || !catalog[itemNo]) {
-      nameEl.value = '';
-      const opt = document.createElement('option');
-      opt.value = '';
-      opt.textContent = 'Select item code first…';
-      sizeSel.appendChild(opt);
-      sizeSel.disabled = false;
+    if (!name || !byName[name]) {
       return;
     }
+    const codes = Object.keys(byName[name].codes || {}).sort();
+    codes.forEach(function (code) {
+      const opt = document.createElement('option');
+      opt.value = code;
+      opt.textContent = code;
+      if (preferredCode && code === preferredCode) {
+        opt.selected = true;
+      }
+      codeSel.appendChild(opt);
+    });
+    if (codes.length === 1) {
+      codeSel.value = codes[0];
+      codeSel.disabled = false;
+      fillSizes(row, null);
+    } else if (preferredCode) {
+      fillSizes(row, null);
+    }
+  }
 
-    nameEl.value = catalog[itemNo].item_name || '';
-    const sizes = catalog[itemNo].sizes || [];
+  function fillSizes(row, preferredSkuId) {
+    const nameSel = row.querySelector('.item-name-select');
+    const codeSel = row.querySelector('.item-code-select');
+    const sizeSel = row.querySelector('.size-select');
+    const skuInput = row.querySelector('.sku-id-input');
+    const name = nameSel.value;
+    const code = codeSel.value;
+    resetSelect(sizeSel, code ? 'Select size…' : 'Select code first…');
+    skuInput.value = '';
+
+    if (!name || !code || !byName[name] || !byName[name].codes[code]) {
+      return;
+    }
+    const sizes = byName[name].codes[code] || [];
     if (sizes.length === 0) {
-      const opt = document.createElement('option');
-      opt.value = '';
-      opt.textContent = 'No sizes registered';
-      sizeSel.appendChild(opt);
       return;
     }
-
     if (sizes.length === 1) {
       const s = sizes[0];
       const opt = document.createElement('option');
@@ -248,53 +304,59 @@ us_header('Stock in', $user, $company);
       skuInput.value = String(s.sku_id);
       return;
     }
-
     sizeSel.disabled = false;
-    const placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = 'Select size…';
-    sizeSel.appendChild(placeholder);
-    let matched = false;
     sizes.forEach(function (s) {
       const opt = document.createElement('option');
       opt.value = String(s.sku_id);
       opt.textContent = s.size + ' (on hand ' + s.on_hand + ')';
       if (preferredSkuId && String(s.sku_id) === String(preferredSkuId)) {
         opt.selected = true;
-        matched = true;
         skuInput.value = String(s.sku_id);
       }
       sizeSel.appendChild(opt);
     });
-    if (!matched) {
-      skuInput.value = '';
-    }
   }
 
   function bindRow(row) {
-    const itemSel = row.querySelector('.item-no-select');
+    const nameSel = row.querySelector('.item-name-select');
+    const codeSel = row.querySelector('.item-code-select');
     const sizeSel = row.querySelector('.size-select');
     const skuInput = row.querySelector('.sku-id-input');
-    itemSel.addEventListener('change', function () {
-      fillRow(row, null);
+    nameSel.addEventListener('change', function () {
+      fillCodes(row, null);
+    });
+    codeSel.addEventListener('change', function () {
+      fillSizes(row, null);
     });
     sizeSel.addEventListener('change', function () {
       skuInput.value = sizeSel.value || '';
     });
   }
 
-  rows.querySelectorAll('.stock-in-row').forEach(function (row) {
+  function initRow(row) {
     bindRow(row);
-    const preferred = row.querySelector('.sku-id-input').value;
-    fillRow(row, preferred || null);
-  });
+    const skuInput = row.querySelector('.sku-id-input');
+    const preferredSku = skuInput.value || null;
+    const prefName = skuInput.getAttribute('data-pref-name') || row.querySelector('.item-name-select').value || '';
+    const prefCode = skuInput.getAttribute('data-pref-code') || '';
+    if (prefName) {
+      row.querySelector('.item-name-select').value = prefName;
+      fillCodes(row, prefCode || null);
+      if (prefCode) {
+        fillSizes(row, preferredSku);
+      }
+    } else {
+      fillCodes(row, null);
+    }
+  }
+
+  rows.querySelectorAll('.stock-in-row').forEach(initRow);
 
   document.getElementById('add_line').addEventListener('click', function () {
     const node = template.content.cloneNode(true);
     const row = node.querySelector('.stock-in-row');
     rows.appendChild(node);
-    bindRow(row);
-    fillRow(row, null);
+    initRow(row);
   });
 
   rows.addEventListener('click', function (e) {
@@ -309,11 +371,13 @@ us_header('Stock in', $user, $company);
   document.getElementById('stock_in_form').addEventListener('submit', function () {
     rows.querySelectorAll('.stock-in-row').forEach(function (row) {
       const sizeSel = row.querySelector('.size-select');
+      const codeSel = row.querySelector('.item-code-select');
       const skuInput = row.querySelector('.sku-id-input');
       if (sizeSel.value) {
         skuInput.value = sizeSel.value;
       }
       sizeSel.disabled = false;
+      codeSel.disabled = false;
     });
   });
 })();

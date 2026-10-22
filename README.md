@@ -18,7 +18,7 @@ SKU identity is **company + item code + size** (DB column `item_no`). Item **nam
 
 1. **Companies** → create company → select it  
 2. **Items** → add item name / item code / size (edit or delete unused SKUs later)  
-3. **Stock in** → bill no → select item code → size auto → qty → save (multi-line OK)  
+3. **Stock in** → bill no → select name → code → size → qty → save (multi-line OK)  
 4. Stock out / Reports / Deficit as needed  
 
 ## Requirements
