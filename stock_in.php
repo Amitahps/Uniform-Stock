@@ -120,7 +120,8 @@ us_header('Stock in', $user, $company);
 <p class="lead">
   Company: <strong><?= us_h($company['name']) ?></strong>.
   Enter the bill once, then add one or more <strong>item name</strong> blocks.
-  Each block shows every item code and size for that name — fill quantities, leave blank to skip, and <strong>Save</strong> once for the whole bill.
+  Each block shows every item code and size with <strong>On hand</strong> (current stock) before the qty-to-add field.
+  Fill quantities, leave blank to skip, and <strong>Save</strong> once for the whole bill.
 </p>
 <?php if ($error !== ''): ?>
   <div class="flash flash-error"><?= us_h($error) ?></div>

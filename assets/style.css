@@ -95,6 +95,14 @@ th { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; colo
   grid-template-columns: 1.4fr 1fr 0.8fr 0.7fr auto;
   align-items: end; padding: 0.75rem; border: 1px dashed var(--line); border-radius: 10px;
 }
+.stock-out-row {
+  grid-template-columns: 2fr 0.7fr 0.7fr auto;
+}
+.stock-out-row .on-hand-display {
+  max-width: 6rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 .stock-in-row {
   grid-template-columns: 1.3fr 1.2fr 1fr 0.65fr auto;
 }
@@ -113,8 +121,8 @@ input[readonly], input:read-only {
   cursor: default;
 }
 @media (max-width: 900px) {
-  .line-row, .stock-in-row { grid-template-columns: 1fr 1fr; }
-  .line-row .remove, .stock-in-row .remove { grid-column: 1 / -1; }
+  .line-row, .stock-in-row, .stock-out-row { grid-template-columns: 1fr 1fr; }
+  .line-row .remove, .stock-in-row .remove, .stock-out-row .remove { grid-column: 1 / -1; }
 }
 .foot { margin-top: 1rem; color: var(--muted); text-align: center; }
 .login-box { max-width: 420px; margin: 2rem auto; }

@@ -74,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $pdo->commit();
             us_flash_set('ok', 'Issue saved (' . count($lines) . ' line(s)).');
-            header('Location: stock_out.php');
+            header('Location: ' . us_url('stock_out.php'));
             exit;
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
@@ -85,18 +85,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+/** Map sku id → on_hand for the form (current company only). */
+$onHandById = [];
+foreach ($stock as $row) {
+    $onHandById[(int) $row['id']] = (int) $row['on_hand'];
+}
+
 us_header('Stock out', $user, $company);
 ?>
 <p class="lead">
   Company: <strong><?= us_h($company['name']) ?></strong>.
-  Issue stock by date and quantity. Saving deducts on-hand; oversell is blocked.
+  Issue stock by date and quantity. <strong>On hand</strong> shows available stock before you enter Qty.
+  Saving deducts on-hand; oversell is blocked.
 </p>
 <?php if ($error !== ''): ?>
   <div class="flash flash-error"><?= us_h($error) ?></div>
 <?php endif; ?>
 
 <?php if (!$stock): ?>
-  <p class="muted">No stock yet. <a href="items.php">Add items</a> and <a href="stock_in.php">receive a bill</a> first.</p>
+  <p class="muted">No stock yet. <a href="<?= us_h(us_url('items.php')) ?>">Add items</a> and <a href="<?= us_h(us_url('stock_in.php')) ?>">receive a bill</a> first.</p>
 <?php else: ?>
 <form method="post" id="stock_out_form">
   <div style="max-width:280px">
@@ -114,18 +121,29 @@ us_header('Stock out', $user, $company);
     for ($i = 0; $i < $count; $i++):
         $selected = (string) ($_POST['sku_id'][$i] ?? '');
         $qty = (string) ($_POST['quantity'][$i] ?? '');
+        $onHandShow = $selected !== '' && isset($onHandById[(int) $selected])
+            ? (string) $onHandById[(int) $selected]
+            : '';
     ?>
-    <div class="line-row" style="grid-template-columns: 2fr 0.7fr auto;">
+    <div class="line-row stock-out-row">
       <div>
         <label>Item / size</label>
-        <select name="sku_id[]" required>
-          <option value="">Select…</option>
+        <select name="sku_id[]" class="sku-select" required>
+          <option value="" data-on-hand="">Select…</option>
           <?php foreach ($stock as $row): ?>
-            <option value="<?= (int) $row['id'] ?>" <?= (string) $row['id'] === $selected ? 'selected' : '' ?>>
-              <?= us_h($row['item_name'] . ' · ' . $row['item_no'] . ' · ' . $row['size'] . ' (on hand ' . $row['on_hand'] . ')') ?>
+            <option
+              value="<?= (int) $row['id'] ?>"
+              data-on-hand="<?= (int) $row['on_hand'] ?>"
+              <?= (string) $row['id'] === $selected ? 'selected' : '' ?>
+            >
+              <?= us_h($row['item_name'] . ' · ' . $row['item_no'] . ' · ' . $row['size']) ?>
             </option>
           <?php endforeach; ?>
         </select>
+      </div>
+      <div>
+        <label>On hand</label>
+        <input type="text" class="on-hand-display" readonly tabindex="-1" value="<?= us_h($onHandShow) ?>" placeholder="—">
       </div>
       <div>
         <label>Qty</label>
@@ -145,17 +163,21 @@ us_header('Stock out', $user, $company);
 </form>
 
 <template id="line_template">
-  <div class="line-row" style="grid-template-columns: 2fr 0.7fr auto;">
+  <div class="line-row stock-out-row">
     <div>
       <label>Item / size</label>
-      <select name="sku_id[]" required>
-        <option value="">Select…</option>
+      <select name="sku_id[]" class="sku-select" required>
+        <option value="" data-on-hand="">Select…</option>
         <?php foreach ($stock as $row): ?>
-          <option value="<?= (int) $row['id'] ?>">
-            <?= us_h($row['item_name'] . ' · ' . $row['item_no'] . ' · ' . $row['size'] . ' (on hand ' . $row['on_hand'] . ')') ?>
+          <option value="<?= (int) $row['id'] ?>" data-on-hand="<?= (int) $row['on_hand'] ?>">
+            <?= us_h($row['item_name'] . ' · ' . $row['item_no'] . ' · ' . $row['size']) ?>
           </option>
         <?php endforeach; ?>
       </select>
+    </div>
+    <div>
+      <label>On hand</label>
+      <input type="text" class="on-hand-display" readonly tabindex="-1" value="" placeholder="—">
     </div>
     <div>
       <label>Qty</label>
@@ -171,9 +193,37 @@ us_header('Stock out', $user, $company);
 (function () {
   const rows = document.getElementById('line_rows');
   const template = document.getElementById('line_template');
+
+  function syncOnHand(row) {
+    const sel = row.querySelector('.sku-select');
+    const display = row.querySelector('.on-hand-display');
+    if (!sel || !display) return;
+    const opt = sel.options[sel.selectedIndex];
+    const val = opt && opt.getAttribute('data-on-hand') !== null
+      ? opt.getAttribute('data-on-hand')
+      : '';
+    display.value = sel.value && val !== '' ? val : '';
+  }
+
+  function bindRow(row) {
+    const sel = row.querySelector('.sku-select');
+    if (!sel || sel.dataset.bound === '1') return;
+    sel.dataset.bound = '1';
+    sel.addEventListener('change', function () {
+      syncOnHand(row);
+    });
+    syncOnHand(row);
+  }
+
+  rows.querySelectorAll('.line-row').forEach(bindRow);
+
   document.getElementById('add_line').addEventListener('click', function () {
-    rows.appendChild(template.content.cloneNode(true));
+    const node = template.content.cloneNode(true);
+    const row = node.querySelector('.line-row');
+    rows.appendChild(node);
+    bindRow(row);
   });
+
   rows.addEventListener('click', function (e) {
     if (e.target.classList.contains('remove-line')) {
       const row = e.target.closest('.line-row');
