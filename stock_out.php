@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
             }
             if (!us_get_sku($pdo, $line['sku_id'], $companyId)) {
-                $error = 'One or more selected items are not in this company.';
+                $error = 'One or more selected items are not in this school.';
                 break;
             }
         }
@@ -94,7 +94,7 @@ foreach ($stock as $row) {
 us_header('Stock out', $user, $company);
 ?>
 <p class="lead">
-  Company: <strong><?= us_h($company['name']) ?></strong>.
+  School: <strong><?= us_h($company['name']) ?></strong>.
   Issue stock by date and quantity. <strong>On hand</strong> shows available stock before you enter Qty.
   Saving deducts on-hand; oversell is blocked.
 </p>

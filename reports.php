@@ -62,7 +62,7 @@ if ($mode === 'movements') {
 us_header('Reports', $user, $company);
 ?>
 <p class="lead">
-  Company: <strong><?= us_h($company['name']) ?></strong>.
+  School: <strong><?= us_h($company['name']) ?></strong> only — Bachpan and AHP.S never mix.
   Quantity lookup, item-wise statement, or date-range stock movements.
   Each row is one SKU: <strong>item name + item code + size</strong>.
   Same name with size 3 and size 4 (or different codes) always appear as <strong>separate lines</strong> with their own qty in/out/balance — never merged.
@@ -115,7 +115,7 @@ us_header('Reports', $user, $company);
       </tbody>
     </table>
   <?php elseif ($lookupSkuId > 0): ?>
-    <p class="muted">SKU not found in this company.</p>
+    <p class="muted">SKU not found in this school.</p>
   <?php endif; ?>
 
 <?php elseif ($mode === 'statement'): ?>
@@ -123,7 +123,7 @@ us_header('Reports', $user, $company);
     One row per item code + size. Example: name A / size 3 and name A / size 4 are two lines, each with its own on-hand.
   </p>
   <?php if (!$all): ?>
-    <p class="muted">No stock recorded yet for this company.</p>
+    <p class="muted">No stock recorded yet for this school.</p>
   <?php else: ?>
     <table>
       <thead>
@@ -184,7 +184,7 @@ us_header('Reports', $user, $company);
   <?php if ($movementError !== ''): ?>
     <div class="flash flash-error"><?= us_h($movementError) ?></div>
   <?php elseif (!$movements): ?>
-    <p class="muted">No SKUs for this company<?= $itemNoFilter !== '' ? ' / item filter' : '' ?>.</p>
+    <p class="muted">No SKUs for this school<?= $itemNoFilter !== '' ? ' / item filter' : '' ?>.</p>
   <?php else: ?>
     <table>
       <thead>

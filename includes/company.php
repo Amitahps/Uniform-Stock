@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/layout.php';
 
 function us_current_company_id(): ?int
 {
@@ -23,7 +24,7 @@ function us_set_company_id(?int $companyId): void
 }
 
 /**
- * Require login + an active company. Redirects to companies.php if none selected.
+ * Require login + an active school (company row). Redirects to Schools page if none selected.
  * @return array{user: array, company: array}
  */
 function us_require_company(): array
@@ -34,6 +35,7 @@ function us_require_company(): array
     $company = $id ? us_get_company($pdo, $id) : null;
     if (!$company) {
         us_set_company_id(null);
+        us_flash_set('warn', 'Choose a school (Bachpan or AHP.S) before Items, Stock in/out, Reports, or Deficit.');
         header('Location: ' . us_url('companies.php'));
         exit;
     }

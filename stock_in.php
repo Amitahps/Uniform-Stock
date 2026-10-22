@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         foreach ($lines as $line) {
             if (!us_get_sku($pdo, $line['sku_id'], $companyId)) {
-                $error = 'One or more selected items are not registered for this company.';
+                $error = 'One or more selected items are not registered for this school.';
                 break;
             }
         }
@@ -82,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->rollBack();
             }
             if (str_contains($e->getMessage(), 'UNIQUE')) {
-                $error = 'Bill number already exists for this company. Use a new bill number for replenishment.';
+                $error = 'Bill number already exists for this school. Use a new bill number for replenishment.';
             } else {
                 $error = 'Could not save bill: ' . $e->getMessage();
             }
@@ -118,7 +118,7 @@ $itemNames = array_keys($byName);
 us_header('Stock in', $user, $company);
 ?>
 <p class="lead">
-  Company: <strong><?= us_h($company['name']) ?></strong>.
+  School: <strong><?= us_h($company['name']) ?></strong>.
   Enter the bill once, then add one or more <strong>item name</strong> blocks.
   Each block shows every item code and size with <strong>On hand</strong> (current stock) before the qty-to-add field.
   Fill quantities, leave blank to skip, and <strong>Save</strong> once for the whole bill.
@@ -129,7 +129,7 @@ us_header('Stock in', $user, $company);
 
 <?php if ($itemNames === []): ?>
   <div class="flash flash-warn">
-    No items registered for this company.
+    No items registered for this school.
     <a href="<?= us_h(us_url('items.php')) ?>">Add an item</a> first, then receive stock here.
   </div>
 <?php else: ?>

@@ -39,7 +39,7 @@ function us_header(string $title, ?array $user = null, ?array $company = null): 
     echo '<div class="brand"><a href="' . us_h(us_url('index.php')) . '">' . us_h(US_APP_NAME) . '</a></div>';
     if ($user) {
         echo '<nav class="nav">';
-        echo '<a href="' . us_h(us_url('companies.php')) . '">Companies</a>';
+        echo '<a href="' . us_h(us_url('companies.php')) . '">Schools</a>';
         echo '<a href="' . us_h(us_url('items.php')) . '">Items</a>';
         echo '<a href="' . us_h(us_url('stock_in.php')) . '">Stock in</a>';
         echo '<a href="' . us_h(us_url('stock_out.php')) . '">Stock out</a>';
@@ -50,7 +50,9 @@ function us_header(string $title, ?array $user = null, ?array $company = null): 
         echo '</nav>';
         echo '<div class="who">';
         if ($company) {
-            echo '<span class="company-pill">' . us_h($company['name']) . '</span> · ';
+            echo '<span class="company-pill">School: ' . us_h($company['name']) . '</span> · ';
+        } else {
+            echo '<span class="muted">No school selected</span> · ';
         }
         echo us_h($user['username']);
         echo '</div>';
@@ -66,6 +68,6 @@ function us_header(string $title, ?array $user = null, ?array $company = null): 
 function us_footer(): void
 {
     echo '</main>';
-    echo '<footer class="foot"><small>School vendor stock · Hostinger / PHP + SQLite · per-company inventory</small></footer>';
+    echo '<footer class="foot"><small>School vendor stock · Hostinger / PHP + SQLite · per-school inventory (Bachpan / AHP.S)</small></footer>';
     echo '</div></body></html>';
 }

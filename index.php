@@ -39,9 +39,9 @@ try {
     us_header('Dashboard', $user, $company);
     ?>
 <p class="lead">
-  Working in <strong><?= us_h($company['name']) ?></strong>.
-  Receive bills, issue stock, and review on-hand balances for this company only.
-  <a href="<?= us_h(us_url('companies.php')) ?>">Switch company</a>
+  Working in school <strong><?= us_h($company['name']) ?></strong>.
+  Receive bills, issue stock, and review on-hand balances for this school only (Bachpan and AHP.S stay separate).
+  <a href="<?= us_h(us_url('companies.php')) ?>">Switch school</a>
 </p>
 <ul class="card-list">
   <li><strong><?= (int) $totalSkus ?></strong> SKUs · <strong><?= (int) $units ?></strong> units on hand</li>

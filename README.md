@@ -4,22 +4,22 @@ PHP + SQLite stock inventory for a school uniform vendor. **Separate website** f
 
 ## Features
 
-- **Companies** — create a company name, then select it. Items, stock in/out, on-hand, reports, and deficit are **scoped to the selected company** (stock is never mixed across companies). **Remove company** requires typing the name and re-entering the admin password; that company’s items and stock history are permanently deleted (other companies untouched).
+- **Schools** — stock is for schools. **Bachpan** and **AHP.S** are seeded on migrate. Select a school before Items / Stock in / Stock out / Reports / Deficit (clear prompt if none selected). Data never mixes across schools. You may add more schools later. **Remove school** requires typing the name and re-entering the admin password; that school’s items and stock history are permanently deleted (other schools untouched). (DB table remains `companies`.)
 - **Login** — session auth; default `admin` / `admin123` (change under Password)
-- **Items** — **Use existing item name** (dropdown) → type **item code** → type **size**; or **Create new item name** (name + code + size). Same name may use different codes/sizes. Duplicate code+size is rejected with a clear error. Uniqueness is **company + item code + size** only. **Edit** anytime. **Delete** only if unused.
-- **Stock in** — enter **bill number** (and date) once at the top. Add **item name** blocks: select a name → all its codes/sizes appear as rows with **On hand** (read-only) before qty → fill qty per row (blank/0 skipped). Add more item blocks under the same bill. **One Save** writes the whole bill. Duplicate SKU lines are summed. Company-scoped.
-- **Stock out** — issue date + lines: Item/size → **On hand** (read-only, updates on selection) → Qty; deducts on-hand; blocks oversell. Company-scoped.
-- **Reports** — quantity lookup; item-wise statement; **date-range movements** (Qty In / Qty Out in range, Balance = closing on-hand as of the To date). Every report row is one SKU: **name + item code + size** with its own figures — sizes (and codes) under the same name are never merged. Optional filter by item code. Current company only.
-- **Deficit** — SKUs with quantity &lt; 5; filters: all / by item / by size (current company)
+- **Items** — **Use existing item name** (dropdown) → type **item code** → type **size**; or **Create new item name** (name + code + size). Same name may use different codes/sizes. Duplicate code+size is rejected with a clear error. Uniqueness is **school + item code + size** only. **Edit** anytime. **Delete** only if unused.
+- **Stock in** — enter **bill number** (and date) once at the top. Add **item name** blocks: select a name → all its codes/sizes appear as rows with **On hand** (read-only) before qty → fill qty per row (blank/0 skipped). Add more item blocks under the same bill. **One Save** writes the whole bill. Duplicate SKU lines are summed. School-scoped.
+- **Stock out** — issue date + lines: Item/size → **On hand** (read-only, updates on selection) → Qty; deducts on-hand; blocks oversell. School-scoped.
+- **Reports** — quantity lookup; item-wise statement; **date-range movements** (Qty In / Qty Out in range, Balance = closing on-hand as of the To date). Every report row is one SKU: **name + item code + size** with its own figures — sizes (and codes) under the same name are never merged. Optional filter by item code. **Current school only** (Bachpan vs AHP.S fully separate).
+- **Deficit** — SKUs with quantity &lt; 5; filters: all / by item / by size (current school only)
 
-SKU identity is **company + item code + size** (DB column `item_no`). Item **name is not unique**. On-hand = sum(receipts) − sum(issues) per SKU.
+SKU identity is **school + item code + size** (DB: `company_id` + `item_no` + size). Item **name is not unique**. On-hand = sum(receipts) − sum(issues) per SKU.
 
 ### Typical use
 
-1. **Companies** → create company → select it  
-2. **Items** → add item name / item code / size (edit or delete unused SKUs later)  
+1. **Schools** → select **Bachpan** or **AHP.S** (required before anything else)  
+2. **Items** → add item name / item code / size for that school  
 3. **Stock in** → bill no + date → Add item name → fill qtys for codes/sizes → add more names if needed → **Save bill** once  
-4. Stock out / Reports / Deficit as needed  
+4. Stock out / Reports / Deficit as needed (still under the selected school) 
 
 ## Requirements
 

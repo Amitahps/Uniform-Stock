@@ -86,9 +86,9 @@ $defaultMode = $existingNames === [] ? 'new' : (($postedMode === 'new') ? 'new' 
 us_header('Items', $user, $company);
 ?>
 <p class="lead">
-  For <strong><?= us_h($company['name']) ?></strong>:
-  select an existing item name and enter code + size, or create a brand-new name.
-  Uniqueness is <strong>item code + size</strong> only.
+  School: <strong><?= us_h($company['name']) ?></strong>.
+  Select an existing item name and enter code + size, or create a brand-new name.
+  Uniqueness is <strong>item code + size</strong> within this school only.
 </p>
 <?php if ($error !== ''): ?>
   <div class="flash flash-error"><?= us_h($error) ?></div>
@@ -213,7 +213,7 @@ us_header('Items', $user, $company);
 <h2 style="margin-top:1.75rem;font-size:1.15rem">Registered SKUs</h2>
 <p class="muted" style="margin-top:0">Each row is name + item code + size. Delete is blocked when the SKU has stock history.</p>
 <?php if (!$skus): ?>
-  <p class="muted">No items yet for this company.</p>
+  <p class="muted">No items yet for this school.</p>
 <?php else: ?>
   <table>
     <thead>

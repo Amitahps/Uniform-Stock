@@ -35,7 +35,7 @@ $deficit = array_values(array_filter($rows, static fn(array $r): bool => (int) $
 us_header('Deficit', $user, $company);
 ?>
 <p class="lead">
-  Company: <strong><?= us_h($company['name']) ?></strong>.
+  School: <strong><?= us_h($company['name']) ?></strong> only.
   SKUs with on-hand quantity &lt; <?= (int) US_DEFICIT_THRESHOLD ?>. Filter by all, item, or size.
 </p>
 

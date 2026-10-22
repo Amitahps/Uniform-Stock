@@ -78,15 +78,39 @@ function us_table_row_count(PDO $pdo, string $table): int
     return (int) $pdo->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn();
 }
 
-function us_ensure_default_company(PDO $pdo): int
+/**
+ * Ensure the two school scopes exist (DB table remains `companies`).
+ * Legacy "Default" is renamed to Bachpan when Bachpan is missing.
+ * Returns Bachpan's id for migrate backfill of orphan rows.
+ */
+function us_ensure_schools(PDO $pdo): int
 {
-    $pdo->exec("INSERT INTO companies (name) SELECT 'Default' WHERE NOT EXISTS (SELECT 1 FROM companies LIMIT 1)");
-    $id = (int) $pdo->query('SELECT id FROM companies ORDER BY id LIMIT 1')->fetchColumn();
+    $hasBachpan = (int) $pdo->query("SELECT COUNT(*) FROM companies WHERE name = 'Bachpan'")->fetchColumn();
+    if ($hasBachpan === 0) {
+        $defaultId = (int) $pdo->query("SELECT id FROM companies WHERE name = 'Default' LIMIT 1")->fetchColumn();
+        if ($defaultId > 0) {
+            $pdo->prepare("UPDATE companies SET name = 'Bachpan' WHERE id = ?")->execute([$defaultId]);
+        }
+    }
+
+    foreach (['Bachpan', 'AHP.S'] as $name) {
+        $stmt = $pdo->prepare(
+            'INSERT INTO companies (name) SELECT ? WHERE NOT EXISTS (SELECT 1 FROM companies WHERE name = ?)'
+        );
+        $stmt->execute([$name, $name]);
+    }
+
+    $id = (int) $pdo->query("SELECT id FROM companies WHERE name = 'Bachpan' LIMIT 1")->fetchColumn();
     if ($id <= 0) {
-        $pdo->exec("INSERT INTO companies (name) VALUES ('Default')");
-        $id = (int) $pdo->lastInsertId();
+        $id = (int) $pdo->query('SELECT id FROM companies ORDER BY id LIMIT 1')->fetchColumn();
     }
     return $id;
+}
+
+/** @deprecated Use us_ensure_schools() */
+function us_ensure_default_company(PDO $pdo): int
+{
+    return us_ensure_schools($pdo);
 }
 
 /** Drop leftover *_new tables from a failed migrate (FK must be OFF). */
@@ -152,7 +176,7 @@ CREATE TABLE IF NOT EXISTS companies (
 SQL);
 
     us_recover_half_broken($pdo);
-    $companyId = us_ensure_default_company($pdo);
+    $companyId = us_ensure_schools($pdo);
 
     us_ensure_company_scoped_table(
         $pdo,
@@ -344,7 +368,14 @@ function us_rebuild_table_with_company(
 
 function us_list_companies(PDO $pdo): array
 {
-    return $pdo->query('SELECT id, name, created_at FROM companies ORDER BY name COLLATE NOCASE')->fetchAll();
+    return $pdo->query(
+        "SELECT id, name, created_at FROM companies
+         ORDER BY CASE name
+           WHEN 'Bachpan' THEN 1
+           WHEN 'AHP.S' THEN 2
+           ELSE 3
+         END, name COLLATE NOCASE"
+    )->fetchAll();
 }
 
 function us_get_company(PDO $pdo, int $id): ?array
@@ -359,7 +390,7 @@ function us_create_company(PDO $pdo, string $name): int
 {
     $name = trim($name);
     if ($name === '') {
-        throw new RuntimeException('Company name is required.');
+        throw new RuntimeException('School name is required.');
     }
     try {
         $stmt = $pdo->prepare('INSERT INTO companies (name) VALUES (?)');
@@ -367,21 +398,21 @@ function us_create_company(PDO $pdo, string $name): int
         return (int) $pdo->lastInsertId();
     } catch (PDOException $e) {
         if (str_contains($e->getMessage(), 'UNIQUE')) {
-            throw new RuntimeException('A company with that name already exists.');
+            throw new RuntimeException('A school with that name already exists.');
         }
         throw $e;
     }
 }
 
 /**
- * Permanently delete one company and only its stock data (items, bills, issues).
- * Other companies are untouched. Caller must verify admin password first.
+ * Permanently delete one school (company row) and only its stock data (items, bills, issues).
+ * Other schools are untouched. Caller must verify admin password first.
  */
 function us_delete_company(PDO $pdo, int $companyId): void
 {
     $company = us_get_company($pdo, $companyId);
     if (!$company) {
-        throw new RuntimeException('Company not found.');
+        throw new RuntimeException('School not found.');
     }
 
     $pdo->beginTransaction();
@@ -538,7 +569,7 @@ function us_create_sku(PDO $pdo, int $companyId, string $itemNo, string $itemNam
     $find->execute([$companyId, $itemNo, $size]);
     if ($find->fetch()) {
         throw new RuntimeException(
-            'Item code "' . $itemNo . '" with size "' . $size . '" already exists for this company. '
+            'Item code "' . $itemNo . '" with size "' . $size . '" already exists for this school. '
             . 'Enter a different size for this code, or a different item code.'
         );
     }
@@ -568,7 +599,7 @@ function us_update_sku(PDO $pdo, int $companyId, int $skuId, string $itemNo, str
 
     $sku = us_get_sku($pdo, $skuId, $companyId);
     if (!$sku) {
-        throw new RuntimeException('Item not found in this company.');
+        throw new RuntimeException('Item not found in this school.');
     }
 
     $dup = $pdo->prepare('SELECT id FROM skus WHERE company_id = ? AND item_no = ? AND size = ? AND id != ?');
@@ -591,7 +622,7 @@ function us_delete_sku(PDO $pdo, int $companyId, int $skuId): void
 {
     $sku = us_get_sku($pdo, $skuId, $companyId);
     if (!$sku) {
-        throw new RuntimeException('Item not found in this company.');
+        throw new RuntimeException('Item not found in this school.');
     }
     if (us_sku_has_movements($pdo, $skuId)) {
         throw new RuntimeException(
