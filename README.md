@@ -11,6 +11,7 @@ PHP + SQLite stock inventory for a school uniform vendor. **Separate website** f
 - **Stock in** — bill number + date once; item-name blocks with **On hand** before qty; **One Save** for the whole bill. Company+school scoped.
 - **Stock out** — Item/size → **On hand** → Qty; blocks oversell. Company+school scoped.
 - **Reports** / **Deficit** — current company + school only.
+- **Backup** (login required) — **Download source code** (server-built ZIP of PHP/assets, excludes `data/*.db`) and **Download data backup** (timestamped `uniform-stock-backup-YYYYMMDD-HHMM.db`). Optional GitHub `main.zip` link. `data/` stays blocked from public URLs; downloads only via authenticated PHP.
 
 SKU identity is **company + school + item code + size** (DB: `company_id`, `school`, `item_no`, `size`). On-hand = sum(receipts) − sum(issues) per SKU.
 

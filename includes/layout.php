@@ -45,6 +45,7 @@ function us_header(string $title, ?array $user = null, ?array $company = null, ?
         echo '<a href="' . us_h(us_url('stock_out.php')) . '">Stock out</a>';
         echo '<a href="' . us_h(us_url('reports.php')) . '">Reports</a>';
         echo '<a href="' . us_h(us_url('deficit.php')) . '">Deficit</a>';
+        echo '<a href="' . us_h(us_url('backup.php')) . '">Backup</a>';
         echo '<a href="' . us_h(us_url('password.php')) . '">Password</a>';
         echo '<a href="' . us_h(us_url('logout.php')) . '">Logout</a>';
         echo '</nav>';
