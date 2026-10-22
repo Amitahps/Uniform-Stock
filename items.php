@@ -11,6 +11,7 @@ $school = $ctx['school'];
 $companyId = (int) $company['id'];
 $pdo = us_db();
 $error = '';
+$canPower = us_has_power($user);
 $editId = isset($_GET['edit']) ? (int) $_GET['edit'] : 0;
 $editSku = $editId > 0 ? us_get_sku($pdo, $editId, $companyId, $school) : null;
 $postedMode = (string) ($_POST['name_mode'] ?? 'existing');
@@ -32,8 +33,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($itemNo === '' || $itemName === '' || $size === '') {
                 throw new RuntimeException('Item name, item code, and size are all required.');
             }
-            us_create_sku($pdo, $companyId, $school, $itemNo, $itemName, $size);
-            us_flash_set('ok', 'Registered ' . $itemName . ' · ' . $itemNo . ' · ' . $size . '.');
+            $result = us_create_sku_all_companies($pdo, $companyId, $school, $itemNo, $itemName, $size);
+            us_flash_set(
+                'ok',
+                'Registered ' . $itemName . ' · ' . $itemNo . ' · ' . $size
+                . ' for school ' . $school . ' in ' . (int) $result['created_count']
+                . ' of ' . (int) $result['company_count'] . ' companies.'
+            );
             header('Location: ' . us_url('items.php'));
             exit;
         }
@@ -48,14 +54,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 (string) ($_POST['item_name'] ?? ''),
                 (string) ($_POST['size'] ?? '')
             );
-            us_flash_set('ok', 'Item updated.');
+            us_flash_set('ok', 'Item updated for this company only. Other companies keep their own name/code/size.');
             header('Location: ' . us_url('items.php'));
             exit;
         }
         if ($action === 'delete') {
+            if (!$canPower) {
+                throw new RuntimeException(
+                    'Only admin or a user with assigned power can remove items from all companies.'
+                );
+            }
             $skuId = (int) ($_POST['sku_id'] ?? 0);
-            us_delete_sku($pdo, $companyId, $school, $skuId);
-            us_flash_set('ok', 'Item deleted.');
+            $sku = us_get_sku($pdo, $skuId, $companyId, $school);
+            if (!$sku) {
+                throw new RuntimeException('Item not found for this company and school.');
+            }
+            $removed = us_delete_sku_all_companies(
+                $pdo,
+                $school,
+                (string) $sku['item_name'],
+                (string) $sku['item_no'],
+                (string) $sku['size']
+            );
+            us_flash_set(
+                'ok',
+                'Removed ' . $sku['item_name'] . ' · ' . $sku['item_no'] . ' · ' . $sku['size']
+                . ' from ' . $removed . ' company(ies) for school ' . $school . '.'
+            );
             header('Location: ' . us_url('items.php'));
             exit;
         }
@@ -89,9 +114,13 @@ us_header('Items', $user, $company, $school);
 ?>
 <p class="lead">
   Company <strong><?= us_h($company['name']) ?></strong> · School <strong><?= us_h($school) ?></strong>.
-  Select an existing item name and enter code + size, or create a brand-new name.
-  Uniqueness is <strong>item name + item code + size</strong> within this company + school
-  (different names may reuse the same code and size).
+  Creating an item adds that <strong>name + code + size</strong> to <strong>every company</strong> for this school only
+  (Bachpan stays with Bachpan; AHP.S with AHP.S).
+  <?php if ($canPower): ?>
+    Remove deletes that SKU from all companies for this school (blocked if any company has stock history).
+  <?php else: ?>
+    Item remove requires admin or assigned power.
+  <?php endif; ?>
 </p>
 <?php if ($error !== ''): ?>
   <div class="flash flash-error"><?= us_h($error) ?></div>
@@ -99,7 +128,7 @@ us_header('Items', $user, $company, $school);
 
 <?php if ($editSku): ?>
 <section style="margin-bottom:1.5rem;padding:1rem;border:1px solid var(--line);border-radius:10px;background:#fff">
-  <h2 style="font-size:1.1rem;margin:0 0 0.75rem">Edit item</h2>
+  <h2 style="font-size:1.1rem;margin:0 0 0.75rem">Edit item (this company only)</h2>
   <form method="post" class="grid" style="max-width:640px">
     <input type="hidden" name="action" value="update">
     <input type="hidden" name="sku_id" value="<?= (int) $editSku['id'] ?>">
@@ -174,7 +203,7 @@ us_header('Items', $user, $company, $school);
              value="<?= us_h($_POST['item_no'] ?? '') ?>"
              placeholder="e.g. U-01">
       <p class="muted" style="margin:0.35rem 0 0;font-size:0.9rem">
-        Type the code. Same code + new size adds another size; same code + same size is rejected.
+        Saves to every company for <strong><?= us_h($school) ?></strong> only.
       </p>
     </div>
     <div>
@@ -184,7 +213,7 @@ us_header('Items', $user, $company, $school);
   </div>
 
   <div class="actions">
-    <button type="submit">Save item / size</button>
+    <button type="submit">Save item / size (all companies)</button>
     <a class="btn secondary" href="<?= us_h(us_url('stock_in.php')) ?>">Go to stock in</a>
   </div>
 </form>
@@ -214,7 +243,12 @@ us_header('Items', $user, $company, $school);
 <?php endif; ?>
 
 <h2 style="margin-top:1.75rem;font-size:1.15rem">Registered SKUs</h2>
-<p class="muted" style="margin-top:0">Each row is name + item code + size. Delete is blocked when the SKU has stock history.</p>
+<p class="muted" style="margin-top:0">
+  Each row is name + item code + size for this company + school.
+  <?php if ($canPower): ?>
+    Remove deletes the same SKU from <strong>all companies</strong> for this school (blocked when any has stock history).
+  <?php endif; ?>
+</p>
 <?php if (!$skus): ?>
   <p class="muted">No items yet for this company and school.</p>
 <?php else: ?>
@@ -238,13 +272,16 @@ us_header('Items', $user, $company, $school);
           <td class="num"><?= (int) $row['on_hand'] ?></td>
           <td class="row-actions">
             <a class="btn secondary" href="<?= us_h(us_url('items.php?edit=' . (int) $row['id'])) ?>">Edit</a>
-            <?php if ($hasMoves): ?>
+            <?php if (!$canPower): ?>
+              <span class="muted" title="Needs admin or power">No remove</span>
+            <?php elseif ($hasMoves): ?>
               <span class="muted" title="Has stock history">Locked</span>
             <?php else: ?>
-              <form method="post" style="display:inline" onsubmit="return confirm('Delete this unused item/size?');">
+              <form method="post" style="display:inline"
+                    onsubmit="return confirm('Remove this item/size from ALL companies for <?= us_h($school) ?>?');">
                 <input type="hidden" name="action" value="delete">
                 <input type="hidden" name="sku_id" value="<?= (int) $row['id'] ?>">
-                <button type="submit" class="secondary danger-btn">Delete</button>
+                <button type="submit" class="secondary danger-btn">Remove (all cos)</button>
               </form>
             <?php endif; ?>
           </td>

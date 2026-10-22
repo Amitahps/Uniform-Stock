@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 define('US_APP_NAME', 'Uniform Stock');
 /** Bump when shipping UI/feature changes — shown on check.php + footer to verify Hostinger deploy. */
-define('US_APP_VERSION', '20261022-staff-v3');
+define('US_APP_VERSION', '20261022-xfer-v4');
 define('US_SESSION_NAME', 'uniform_stock_sess');
 define('US_DEFICIT_THRESHOLD', 5);
 define('US_DEFAULT_USER', 'admin');

@@ -27,21 +27,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!is_array($companyIds)) {
                 $companyIds = [];
             }
-            // If none checked but only one company exists, assign it.
             if ($companyIds === [] && count($allCompanies) === 1) {
                 $companyIds = [(int) $allCompanies[0]['id']];
             }
             $username = trim((string) ($_POST['username'] ?? ''));
+            $hasPower = !empty($_POST['has_power']);
             us_create_staff_user(
                 $pdo,
                 $username,
                 (string) ($_POST['password'] ?? ''),
-                $companyIds
+                $companyIds,
+                $hasPower
             );
             us_flash_set(
                 'ok',
-                'Staff user "' . $username . '" created. Log out, then sign in as that username to test. '
-                . 'Staff will not see Companies, Users, Backup, or Password.'
+                'Staff user "' . $username . '" created'
+                . ($hasPower ? ' with power (can remove global items + issue to company).' : '.')
+                . ' Log out, then sign in as that username to test.'
             );
             header('Location: ' . us_url('users.php'));
             exit;
@@ -53,7 +55,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $companyIds = [];
             }
             us_update_staff_assignments($pdo, $uid, $companyIds);
-            us_flash_set('ok', 'Company assignments updated.');
+            us_set_staff_power($pdo, $uid, !empty($_POST['has_power']));
+            us_flash_set('ok', 'Company assignments and power updated.');
             header('Location: ' . us_url('users.php?edit=' . $uid));
             exit;
         }
@@ -95,10 +98,10 @@ $school = us_current_school();
 us_header('Users', $user, $company, $school);
 ?>
 <div class="flash flash-ok" style="margin-bottom:1rem">
-  <strong>Staff users</strong> — create a username + password, tick the company(ies) they may work in, then
-  <strong>Create staff</strong>. They log in on the Login page with that username.
-  Staff see: Company picker, Items, Stock in/out, Reports, Deficit, Bachpan/AHP.S tabs, Logout.
-  Staff <strong>do not</strong> see: Companies, Users, Backup, Password.
+  <strong>Staff users</strong> — create a username + password, tick companies, optionally assign
+  <strong>Power</strong> (can remove items from all companies + Issue to company + company-issue report).
+  Staff without power still do Items / Stock in / Stock out / Reports / Deficit for assigned companies.
+  Staff never see: Companies, Users, Backup, Password.
 </div>
 <p class="lead">
   Admin-only page. Reset a lost staff password with <strong>Edit → Set new password</strong>.
@@ -126,6 +129,17 @@ us_header('Users', $user, $company, $school);
           </label>
         <?php endforeach; ?>
       <?php endif; ?>
+    </fieldset>
+    <fieldset class="assign-box">
+      <legend>Power</legend>
+      <label class="assign-row">
+        <input type="checkbox" name="has_power" value="1"
+          <?= (int) ($editUser['has_power'] ?? 0) === 1 ? 'checked' : '' ?>>
+        <span>
+          <strong>Assign power</strong> — may remove items from all companies (active school),
+          Issue stock to another company, and view the company-issue report.
+        </span>
+      </label>
     </fieldset>
     <div class="actions">
       <button type="submit">Save assignments</button>
@@ -174,7 +188,6 @@ us_header('Users', $user, $company, $school);
                   $posted = $_POST['company_ids'] ?? [];
                   $checked = is_array($posted) && in_array((string) $cid, array_map('strval', $posted), true);
               } else {
-                  // Default: current company, or the only company.
                   $checked = ($currentCompanyId === $cid) || count($allCompanies) === 1;
               }
           ?>
@@ -184,6 +197,14 @@ us_header('Users', $user, $company, $school);
             </label>
           <?php endforeach; ?>
         <?php endif; ?>
+      </fieldset>
+      <fieldset class="assign-box">
+        <legend>Power (optional)</legend>
+        <label class="assign-row">
+          <input type="checkbox" name="has_power" value="1"
+            <?= !empty($_POST['has_power']) ? 'checked' : '' ?>>
+          <span>Assign power (global item remove + issue to company + issue report)</span>
+        </label>
       </fieldset>
       <div class="actions">
         <button type="submit" <?= $allCompanies === [] ? 'disabled' : '' ?>>Create staff</button>
@@ -197,7 +218,7 @@ us_header('Users', $user, $company, $school);
     <?php else: ?>
       <table>
         <thead>
-          <tr><th>Username</th><th>Companies</th><th></th></tr>
+          <tr><th>Username</th><th>Companies</th><th>Power</th><th></th></tr>
         </thead>
         <tbody>
           <?php foreach ($staff as $s):
@@ -208,10 +229,12 @@ us_header('Users', $user, $company, $school);
                       $names[] = (string) $c['name'];
                   }
               }
+              $powered = (int) ($s['has_power'] ?? 0) === 1;
           ?>
             <tr>
               <td><strong><?= us_h($s['username']) ?></strong></td>
               <td class="muted"><?= us_h($names === [] ? '—' : implode(', ', $names)) ?></td>
+              <td><?= $powered ? 'Yes' : '—' ?></td>
               <td class="row-actions">
                 <a class="btn secondary" href="<?= us_h(us_url('users.php?edit=' . (int) $s['id'])) ?>">Edit / reset password</a>
                 <form method="post" style="display:inline" onsubmit="return confirm('Delete staff user <?= us_h($s['username']) ?>?');">

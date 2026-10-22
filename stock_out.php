@@ -96,8 +96,11 @@ us_header('Stock out', $user, $company, $school);
 ?>
 <p class="lead">
   Company <strong><?= us_h($company['name']) ?></strong> · School <strong><?= us_h($school) ?></strong>.
-  Issue stock by date and quantity. <strong>On hand</strong> shows available stock before you enter Qty.
-  Saving deducts on-hand; oversell is blocked.
+  <strong>Stock out</strong> = normal issue (customers / use). Deducts on-hand; oversell is blocked.
+  <?php if (us_has_power($user)): ?>
+    To move stock to another company, use
+    <a href="<?= us_h(us_url('issue_company.php')) ?>"><strong>Issue to company</strong></a> instead.
+  <?php endif; ?>
 </p>
 <?php if ($error !== ''): ?>
   <div class="flash flash-error"><?= us_h($error) ?></div>

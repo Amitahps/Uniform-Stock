@@ -81,9 +81,13 @@ function us_header(string $title, ?array $user = null, ?array $company = null, ?
         } else {
             echo '<a href="' . us_h(us_url('select_company.php')) . '">Company</a>';
         }
+        $hasPower = function_exists('us_has_power') && us_has_power($user);
         echo '<a href="' . us_h(us_url('items.php')) . '">Items</a>';
         echo '<a href="' . us_h(us_url('stock_in.php')) . '">Stock in</a>';
         echo '<a href="' . us_h(us_url('stock_out.php')) . '">Stock out</a>';
+        if ($hasPower) {
+            echo '<a href="' . us_h(us_url('issue_company.php')) . '">Issue to company</a>';
+        }
         echo '<a href="' . us_h(us_url('reports.php')) . '">Reports</a>';
         echo '<a href="' . us_h(us_url('deficit.php')) . '">Deficit</a>';
         if ($isAdmin) {
@@ -101,7 +105,7 @@ function us_header(string $title, ?array $user = null, ?array $company = null, ?
         }
         echo us_h($user['username']);
         if (!$isAdmin) {
-            echo ' <span class="muted">(staff)</span>';
+            echo ' <span class="muted">(staff' . ($hasPower ? ' · power' : '') . ')</span>';
         }
         echo '</div>';
     }

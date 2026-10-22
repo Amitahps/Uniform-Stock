@@ -82,6 +82,10 @@ try {
   <a class="btn secondary" href="<?= us_h(us_url('items.php')) ?>">Items</a>
   <a class="btn" href="<?= us_h(us_url('stock_in.php')) ?>">Stock in</a>
   <a class="btn secondary" href="<?= us_h(us_url('stock_out.php')) ?>">Stock out</a>
+  <?php if (us_has_power($user)): ?>
+    <a class="btn secondary" href="<?= us_h(us_url('issue_company.php')) ?>">Issue to company</a>
+    <a class="btn secondary" href="<?= us_h(us_url('reports.php?mode=company_issues')) ?>">Issue report</a>
+  <?php endif; ?>
   <a class="btn secondary" href="<?= us_h(us_url('reports.php')) ?>">Reports</a>
   <?php if (us_is_admin($user)): ?>
     <a class="btn secondary" href="<?= us_h(us_url('users.php')) ?>">Users (staff)</a>

@@ -24,7 +24,7 @@ function us_user(): ?array
     if (empty($_SESSION['user_id'])) {
         return null;
     }
-    $stmt = us_db()->prepare('SELECT id, username, role FROM users WHERE id = ?');
+    $stmt = us_db()->prepare('SELECT id, username, role, has_power FROM users WHERE id = ?');
     $stmt->execute([(int) $_SESSION['user_id']]);
     $user = $stmt->fetch();
     if (!$user) {
@@ -33,6 +33,10 @@ function us_user(): ?array
     if (($user['role'] ?? '') !== 'admin' && ($user['role'] ?? '') !== 'staff') {
         $user['role'] = 'admin';
     }
+    $user['has_power'] = (int) ($user['has_power'] ?? 0);
+    if (($user['role'] ?? '') === 'admin') {
+        $user['has_power'] = 1;
+    }
     return $user;
 }
 
@@ -40,6 +44,21 @@ function us_is_admin(?array $user = null): bool
 {
     $u = $user ?? us_user();
     return $u !== null && ($u['role'] ?? '') === 'admin';
+}
+
+/**
+ * Admin, or staff with assigned power (global item remove + issue to company + transfer report).
+ */
+function us_has_power(?array $user = null): bool
+{
+    $u = $user ?? us_user();
+    if ($u === null) {
+        return false;
+    }
+    if (($u['role'] ?? '') === 'admin') {
+        return true;
+    }
+    return (int) ($u['has_power'] ?? 0) === 1;
 }
 
 function us_require_login(): array
@@ -57,6 +76,17 @@ function us_require_admin(): array
     $user = us_require_login();
     if (!us_is_admin($user)) {
         us_flash_set('error', 'That page is for admin only.');
+        header('Location: ' . us_url('index.php'));
+        exit;
+    }
+    return $user;
+}
+
+function us_require_power(): array
+{
+    $user = us_require_login();
+    if (!us_has_power($user)) {
+        us_flash_set('error', 'That action needs admin or assigned power.');
         header('Location: ' . us_url('index.php'));
         exit;
     }

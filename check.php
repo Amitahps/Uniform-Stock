@@ -52,6 +52,7 @@ $featureFiles = [
     'users.php' => 'Users (staff admin)',
     'switch_school.php' => 'School switcher',
     'select_company.php' => 'Staff company picker',
+    'issue_company.php' => 'Issue to company',
     'includes/layout.php' => 'Layout / school bar',
 ];
 foreach ($featureFiles as $rel => $label) {
@@ -62,21 +63,29 @@ $cssBody = is_file($cssPath) ? (string) file_get_contents($cssPath) : '';
 $ok('School bar CSS (.school-bar) present', str_contains($cssBody, '.school-bar'), 'assets/style.css');
 $layoutBody = is_file(__DIR__ . '/includes/layout.php') ? (string) file_get_contents(__DIR__ . '/includes/layout.php') : '';
 $ok('School bar markup in layout', str_contains($layoutBody, 'school-bar'), 'includes/layout.php');
+$dbBody = is_file(__DIR__ . '/includes/db.php') ? (string) file_get_contents(__DIR__ . '/includes/db.php') : '';
+$ok('Catalog sync helpers present', str_contains($dbBody, 'us_create_sku_all_companies'), 'includes/db.php');
+$ok('Company transfer helpers present', str_contains($dbBody, 'us_issue_to_company'), 'includes/db.php');
 
 if ($dbOk) {
     try {
         $userCols = us_table_columns($pdo, 'users');
         $ok('users.role column', in_array('role', $userCols, true), implode(',', $userCols));
+        $ok('users.has_power column', in_array('has_power', $userCols, true), implode(',', $userCols));
         $ok('user_companies table', us_table_exists($pdo, 'user_companies'));
+        $ok('company_transfers table', us_table_exists($pdo, 'company_transfers'));
         $staffCount = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE role = 'staff'")->fetchColumn();
         $adminCount = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE role = 'admin'")->fetchColumn();
+        $powerStaff = (int) $pdo->query(
+            "SELECT COUNT(*) FROM users WHERE role = 'staff' AND has_power = 1"
+        )->fetchColumn();
         $ok(
             'Admin + staff roles readable',
             $adminCount >= 1,
-            'admin=' . $adminCount . ' staff=' . $staffCount
+            'admin=' . $adminCount . ' staff=' . $staffCount . ' power_staff=' . $powerStaff
         );
     } catch (Throwable $e) {
-        $ok('Staff role schema', false, $e->getMessage());
+        $ok('Staff / power / transfer schema', false, $e->getMessage());
     }
 }
 
@@ -141,9 +150,9 @@ foreach ($checks as $c) {
           <li>Hostinger → this Uniform-Stock website → <strong>Git</strong> (or Deployments).</li>
           <li>Confirm branch is <code>main</code> and repo is <code>Amitahps/Uniform-Stock</code> (not ERP/Badminton).</li>
           <li>Click <strong>Redeploy</strong> / Deploy and wait until files finish syncing.</li>
-          <li>In File Manager, confirm <code>users.php</code>, <code>switch_school.php</code>, and <code>includes/layout.php</code> exist in <code>public_html</code>.</li>
-          <li>Reload <code>/check.php</code> — version must show <code><?= htmlspecialchars(US_APP_VERSION, ENT_QUOTES, 'UTF-8') ?></code> and school-bar + staff-role checks OK.</li>
-          <li>Login as admin → <strong>Users</strong> → create staff → Logout → login as staff. Staff must <strong>not</strong> see Companies / Users / Backup / Password. Hard-refresh (Ctrl+F5) if CSS looks old.</li>
+          <li>In File Manager, confirm <code>users.php</code>, <code>issue_company.php</code>, <code>switch_school.php</code>, and <code>includes/layout.php</code> exist in <code>public_html</code>.</li>
+          <li>Reload <code>/check.php</code> — version must show <code><?= htmlspecialchars(US_APP_VERSION, ENT_QUOTES, 'UTF-8') ?></code> and school-bar + staff + <code>has_power</code> + <code>company_transfers</code> checks OK.</li>
+          <li>Login as admin → create item (syncs all companies) → <strong>Issue to company</strong> → Reports → <strong>Issued to companies</strong>. Assign Power on Users for staff who may remove/issue. Hard-refresh (Ctrl+F5) if CSS looks old.</li>
         </ol>
       </div>
       <p><a href="<?= htmlspecialchars(us_url('login.php'), ENT_QUOTES, 'UTF-8') ?>">Go to login</a></p>
