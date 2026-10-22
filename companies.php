@@ -5,7 +5,7 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/company.php';
 require_once __DIR__ . '/includes/layout.php';
 
-$user = us_require_login();
+$user = us_require_admin();
 $pdo = us_db();
 $error = '';
 $deleteId = isset($_GET['delete']) ? (int) $_GET['delete'] : 0;

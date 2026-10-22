@@ -44,6 +44,24 @@ a:hover { text-decoration: underline; }
   background: #e7f6ef; border: 1px solid #b7e0cb; border-radius: 999px;
   padding: 0.15rem 0.55rem; font-size: 0.85rem;
 }
+.school-tabs {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.65rem;
+  margin: 0 0 1rem; padding: 0.65rem 0.85rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+}
+.school-tabs-label {
+  font-weight: 700; color: var(--muted); margin-right: 0.25rem; font-size: 0.9rem;
+}
+.school-tab {
+  display: inline-block; font-weight: 700; padding: 0.45rem 1rem;
+  border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink);
+  text-decoration: none;
+}
+.school-tab:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+.school-tab.is-active {
+  background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
+}
+.school-tabs-hint { font-size: 0.9rem; margin-left: 0.35rem; }
 .row-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
 .danger-btn { color: var(--danger) !important; border-color: #f0c2c2 !important; }
 

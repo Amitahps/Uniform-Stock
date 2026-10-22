@@ -5,7 +5,7 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/company.php';
 require_once __DIR__ . '/includes/layout.php';
 
-$user = us_require_login();
+$user = us_require_admin();
 $companyId = us_current_company_id();
 $company = $companyId ? us_get_company(us_db(), $companyId) : null;
 $school = us_current_school();

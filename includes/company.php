@@ -40,8 +40,13 @@ function us_set_school(?string $school): void
     $_SESSION['school'] = $school;
 }
 
+function us_company_picker_url(): string
+{
+    return us_is_admin() ? us_url('companies.php') : us_url('select_company.php');
+}
+
 /**
- * Require login + active company (vendor). Redirects to companies.php if none.
+ * Require login + active company the user may access.
  * @return array{user: array, company: array}
  */
 function us_require_company(): array
@@ -50,11 +55,17 @@ function us_require_company(): array
     $pdo = us_db();
     $id = us_current_company_id();
     $company = $id ? us_get_company($pdo, $id) : null;
-    if (!$company) {
+    if (!$company || !us_user_can_access_company($pdo, $user, (int) $company['id'])) {
         us_set_company_id(null);
         us_set_school(null);
-        us_flash_set('warn', 'Create or select a company before continuing.');
-        header('Location: ' . us_url('companies.php'));
+        $picker = us_is_admin($user) ? 'companies.php' : 'select_company.php';
+        us_flash_set(
+            'warn',
+            us_is_admin($user)
+                ? 'Create or select a company before continuing.'
+                : 'Select one of your assigned companies before continuing.'
+        );
+        header('Location: ' . us_url($picker));
         exit;
     }
     return ['user' => $user, 'company' => $company];
@@ -69,8 +80,8 @@ function us_require_scope(): array
     $ctx = us_require_company();
     $school = us_current_school();
     if ($school === null) {
-        us_flash_set('warn', 'Choose a school (Bachpan or AHP.S) for this company before Items, Stock, Reports, or Deficit.');
-        header('Location: ' . us_url('companies.php'));
+        us_flash_set('warn', 'Choose Bachpan or AHP.S using the school tabs at the top.');
+        header('Location: ' . us_url('index.php'));
         exit;
     }
     return [

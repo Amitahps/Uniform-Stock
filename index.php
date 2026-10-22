@@ -18,12 +18,26 @@ try {
     require_once __DIR__ . '/includes/company.php';
     require_once __DIR__ . '/includes/layout.php';
 
-    $ctx = us_require_scope();
+    $ctx = us_require_company();
     $user = $ctx['user'];
     $company = $ctx['company'];
-    $school = $ctx['school'];
+    $school = us_current_school();
     $companyId = (int) $company['id'];
     $pdo = us_db();
+
+    us_header('Dashboard', $user, $company, $school);
+
+    if ($school === null) {
+        ?>
+<p class="lead">
+  Company <strong><?= us_h($company['name']) ?></strong>.
+  Choose <strong>Bachpan</strong> or <strong>AHP.S</strong> using the school tabs above to continue.
+</p>
+        <?php
+        us_footer();
+        exit;
+    }
+
     $rows = us_stock_rows($pdo, $companyId, $school);
     $totalSkus = count($rows);
     $low = 0;
@@ -35,13 +49,15 @@ try {
             $low++;
         }
     }
-
-    us_header('Dashboard', $user, $company, $school);
     ?>
 <p class="lead">
   Company <strong><?= us_h($company['name']) ?></strong> · School <strong><?= us_h($school) ?></strong>.
-  Stock for Bachpan and AHP.S stay separate under this company.
-  <a href="<?= us_h(us_url('companies.php')) ?>">Switch company / school</a>
+  Switch school anytime with the tabs above.
+  <?php if (us_is_admin($user)): ?>
+    <a href="<?= us_h(us_url('companies.php')) ?>">Manage companies</a>
+  <?php else: ?>
+    <a href="<?= us_h(us_url('select_company.php')) ?>">Switch company</a>
+  <?php endif; ?>
 </p>
 <ul class="card-list">
   <li><strong><?= (int) $totalSkus ?></strong> SKUs · <strong><?= (int) $units ?></strong> units on hand</li>

@@ -166,6 +166,7 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'admin',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -174,7 +175,17 @@ CREATE TABLE IF NOT EXISTS companies (
     name TEXT NOT NULL UNIQUE,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS user_companies (
+    user_id INTEGER NOT NULL,
+    company_id INTEGER NOT NULL,
+    PRIMARY KEY (user_id, company_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+);
 SQL);
+
+    us_migrate_users_roles($pdo);
 
     us_recover_half_broken($pdo);
     $companyId = us_ensure_vendor_company($pdo);
@@ -337,9 +348,39 @@ SQL);
 
     $count = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
     if ($count === 0) {
-        $stmt = $pdo->prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)');
-        $stmt->execute([US_DEFAULT_USER, password_hash(US_DEFAULT_PASS, PASSWORD_DEFAULT)]);
+        $stmt = $pdo->prepare(
+            'INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)'
+        );
+        $stmt->execute([
+            US_DEFAULT_USER,
+            password_hash(US_DEFAULT_PASS, PASSWORD_DEFAULT),
+            'admin',
+        ]);
     }
+}
+
+/** Ensure users.role exists and existing accounts stay admin; user_companies table ready. */
+function us_migrate_users_roles(PDO $pdo): void
+{
+    $cols = us_table_columns($pdo, 'users');
+    if ($cols !== [] && !in_array('role', $cols, true)) {
+        $pdo->exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'");
+    }
+    if (us_table_exists($pdo, 'users')) {
+        $pdo->exec(
+            "UPDATE users SET role = 'admin'
+             WHERE role IS NULL OR TRIM(role) = '' OR role NOT IN ('admin', 'staff')"
+        );
+    }
+    $pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS user_companies (
+    user_id INTEGER NOT NULL,
+    company_id INTEGER NOT NULL,
+    PRIMARY KEY (user_id, company_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+);
+SQL);
 }
 
 /**
@@ -685,6 +726,7 @@ function us_delete_company(PDO $pdo, int $companyId): void
             'DELETE FROM receipt_lines WHERE sku_id IN (SELECT id FROM skus WHERE company_id = ?)'
         )->execute([$companyId]);
 
+        $pdo->prepare('DELETE FROM user_companies WHERE company_id = ?')->execute([$companyId]);
         $pdo->prepare('DELETE FROM issues WHERE company_id = ?')->execute([$companyId]);
         $pdo->prepare('DELETE FROM receipts WHERE company_id = ?')->execute([$companyId]);
         $pdo->prepare('DELETE FROM skus WHERE company_id = ?')->execute([$companyId]);
@@ -976,4 +1018,178 @@ function us_get_sku(
     }
     $row = $stmt->fetch();
     return $row ?: null;
+}
+
+function us_get_user(PDO $pdo, int $userId): ?array
+{
+    $stmt = $pdo->prepare('SELECT id, username, role, created_at FROM users WHERE id = ?');
+    $stmt->execute([$userId]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+/** @return list<array{id:int,username:string,role:string,created_at:string}> */
+function us_list_staff_users(PDO $pdo): array
+{
+    return $pdo->query(
+        "SELECT id, username, role, created_at FROM users WHERE role = 'staff' ORDER BY username COLLATE NOCASE"
+    )->fetchAll();
+}
+
+/** @return list<int> */
+function us_user_company_ids(PDO $pdo, int $userId): array
+{
+    $stmt = $pdo->prepare('SELECT company_id FROM user_companies WHERE user_id = ? ORDER BY company_id');
+    $stmt->execute([$userId]);
+    return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+}
+
+/** Companies a user may work in (all for admin; assigned only for staff). */
+function us_companies_for_user(PDO $pdo, array $user): array
+{
+    if (($user['role'] ?? '') === 'admin') {
+        return us_list_companies($pdo);
+    }
+    $ids = us_user_company_ids($pdo, (int) $user['id']);
+    if ($ids === []) {
+        return [];
+    }
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $stmt = $pdo->prepare(
+        "SELECT id, name, created_at FROM companies WHERE id IN ({$placeholders}) ORDER BY name COLLATE NOCASE"
+    );
+    $stmt->execute($ids);
+    return $stmt->fetchAll();
+}
+
+function us_user_can_access_company(PDO $pdo, array $user, int $companyId): bool
+{
+    if ($companyId <= 0) {
+        return false;
+    }
+    if (($user['role'] ?? '') === 'admin') {
+        return us_get_company($pdo, $companyId) !== null;
+    }
+    $stmt = $pdo->prepare(
+        'SELECT 1 FROM user_companies WHERE user_id = ? AND company_id = ? LIMIT 1'
+    );
+    $stmt->execute([(int) $user['id'], $companyId]);
+    return (bool) $stmt->fetchColumn();
+}
+
+/**
+ * @param list<int> $companyIds
+ */
+function us_create_staff_user(PDO $pdo, string $username, string $password, array $companyIds): int
+{
+    $username = trim($username);
+    if ($username === '') {
+        throw new RuntimeException('Username is required.');
+    }
+    if (strlen($password) < 6) {
+        throw new RuntimeException('Password must be at least 6 characters.');
+    }
+    $companyIds = array_values(array_unique(array_filter(array_map('intval', $companyIds), static fn(int $id): bool => $id > 0)));
+    if ($companyIds === []) {
+        throw new RuntimeException('Assign the staff user to at least one company.');
+    }
+    foreach ($companyIds as $cid) {
+        if (!us_get_company($pdo, $cid)) {
+            throw new RuntimeException('One or more selected companies were not found.');
+        }
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare(
+            'INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)'
+        );
+        $stmt->execute([$username, password_hash($password, PASSWORD_DEFAULT), 'staff']);
+        $userId = (int) $pdo->lastInsertId();
+        $ins = $pdo->prepare('INSERT INTO user_companies (user_id, company_id) VALUES (?, ?)');
+        foreach ($companyIds as $cid) {
+            $ins->execute([$userId, $cid]);
+        }
+        $pdo->commit();
+        return $userId;
+    } catch (PDOException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        if (str_contains($e->getMessage(), 'UNIQUE')) {
+            throw new RuntimeException('That username is already taken.');
+        }
+        throw $e;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
+
+/**
+ * @param list<int> $companyIds
+ */
+function us_update_staff_assignments(PDO $pdo, int $userId, array $companyIds): void
+{
+    $user = us_get_user($pdo, $userId);
+    if (!$user || ($user['role'] ?? '') !== 'staff') {
+        throw new RuntimeException('Staff user not found.');
+    }
+    $companyIds = array_values(array_unique(array_filter(array_map('intval', $companyIds), static fn(int $id): bool => $id > 0)));
+    if ($companyIds === []) {
+        throw new RuntimeException('Assign the staff user to at least one company.');
+    }
+    foreach ($companyIds as $cid) {
+        if (!us_get_company($pdo, $cid)) {
+            throw new RuntimeException('One or more selected companies were not found.');
+        }
+    }
+    $pdo->beginTransaction();
+    try {
+        $pdo->prepare('DELETE FROM user_companies WHERE user_id = ?')->execute([$userId]);
+        $ins = $pdo->prepare('INSERT INTO user_companies (user_id, company_id) VALUES (?, ?)');
+        foreach ($companyIds as $cid) {
+            $ins->execute([$userId, $cid]);
+        }
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
+
+function us_reset_user_password(PDO $pdo, int $userId, string $newPassword): void
+{
+    $user = us_get_user($pdo, $userId);
+    if (!$user) {
+        throw new RuntimeException('User not found.');
+    }
+    if (strlen($newPassword) < 6) {
+        throw new RuntimeException('Password must be at least 6 characters.');
+    }
+    $stmt = $pdo->prepare('UPDATE users SET password_hash = ? WHERE id = ?');
+    $stmt->execute([password_hash($newPassword, PASSWORD_DEFAULT), $userId]);
+}
+
+function us_delete_staff_user(PDO $pdo, int $userId): void
+{
+    $user = us_get_user($pdo, $userId);
+    if (!$user || ($user['role'] ?? '') !== 'staff') {
+        throw new RuntimeException('Staff user not found.');
+    }
+    $pdo->beginTransaction();
+    try {
+        $pdo->prepare('DELETE FROM user_companies WHERE user_id = ?')->execute([$userId]);
+        $pdo->prepare('DELETE FROM users WHERE id = ? AND role = ?')->execute([$userId, 'staff']);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
 }
