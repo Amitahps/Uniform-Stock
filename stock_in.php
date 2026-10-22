@@ -1,46 +1,39 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/company.php';
 require_once __DIR__ . '/includes/layout.php';
 
-$user = us_require_login();
+$ctx = us_require_company();
+$user = $ctx['user'];
+$company = $ctx['company'];
+$companyId = (int) $company['id'];
 $pdo = us_db();
-$existing = us_stock_rows($pdo);
+$catalog = us_item_catalog($pdo, $companyId);
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $billNo = trim((string) ($_POST['bill_no'] ?? ''));
     $receiptDate = trim((string) ($_POST['receipt_date'] ?? ''));
-    $itemNos = $_POST['item_no'] ?? [];
-    $itemNames = $_POST['item_name'] ?? [];
-    $sizes = $_POST['size'] ?? [];
+    $skuIds = $_POST['sku_id'] ?? [];
     $qtys = $_POST['quantity'] ?? [];
 
-    if (!is_array($itemNos)) {
-        $itemNos = [];
-    }
-    if (!is_array($itemNames)) {
-        $itemNames = [];
-    }
-    if (!is_array($sizes)) {
-        $sizes = [];
+    if (!is_array($skuIds)) {
+        $skuIds = [];
     }
     if (!is_array($qtys)) {
         $qtys = [];
     }
 
     $lines = [];
-    $n = max(count($itemNos), count($itemNames), count($sizes), count($qtys));
+    $n = max(count($skuIds), count($qtys));
     for ($i = 0; $i < $n; $i++) {
-        $itemNo = trim((string) ($itemNos[$i] ?? ''));
-        $itemName = trim((string) ($itemNames[$i] ?? ''));
-        $size = trim((string) ($sizes[$i] ?? ''));
+        $skuId = (int) ($skuIds[$i] ?? 0);
         $qty = (int) ($qtys[$i] ?? 0);
-        if ($itemNo === '' && $itemName === '' && $size === '' && $qty === 0) {
+        if ($skuId <= 0 && $qty === 0) {
             continue;
         }
-        $lines[] = compact('itemNo', 'itemName', 'size', 'qty');
+        $lines[] = ['sku_id' => $skuId, 'qty' => $qty];
     }
 
     if ($billNo === '') {
@@ -51,8 +44,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Add at least one stock line.';
     } else {
         foreach ($lines as $line) {
-            if ($line['itemNo'] === '' || $line['itemName'] === '' || $line['size'] === '' || $line['qty'] < 1) {
-                $error = 'Each line needs item name, item no, size, and quantity ≥ 1.';
+            if ($line['sku_id'] <= 0 || $line['qty'] < 1) {
+                $error = 'Each line needs an existing item/size and quantity ≥ 1.';
+                break;
+            }
+            if (!us_get_sku($pdo, $line['sku_id'], $companyId)) {
+                $error = 'One or more selected items are not registered for this company.';
                 break;
             }
         }
@@ -61,13 +58,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($error === '') {
         try {
             $pdo->beginTransaction();
-            $insR = $pdo->prepare('INSERT INTO receipts (bill_no, receipt_date) VALUES (?, ?)');
-            $insR->execute([$billNo, $receiptDate]);
+            $insR = $pdo->prepare('INSERT INTO receipts (company_id, bill_no, receipt_date) VALUES (?, ?, ?)');
+            $insR->execute([$companyId, $billNo, $receiptDate]);
             $receiptId = (int) $pdo->lastInsertId();
             $insL = $pdo->prepare('INSERT INTO receipt_lines (receipt_id, sku_id, quantity) VALUES (?, ?, ?)');
             foreach ($lines as $line) {
-                $skuId = us_find_or_create_sku($pdo, $line['itemNo'], $line['itemName'], $line['size']);
-                $insL->execute([$receiptId, $skuId, $line['qty']]);
+                $insL->execute([$receiptId, $line['sku_id'], $line['qty']]);
             }
             $pdo->commit();
             us_flash_set('ok', 'Bill ' . $billNo . ' saved (' . count($lines) . ' line(s)).');
@@ -78,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->rollBack();
             }
             if (str_contains($e->getMessage(), 'UNIQUE')) {
-                $error = 'Bill number already exists. Use a new bill number for replenishment.';
+                $error = 'Bill number already exists for this company. Use a new bill number for replenishment.';
             } else {
                 $error = 'Could not save bill: ' . $e->getMessage();
             }
@@ -86,35 +82,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-us_header('Stock in', $user);
+$itemNos = array_keys($catalog);
+us_header('Stock in', $user, $company);
 ?>
-<p class="lead">Enter a bill number and one or more lines. Same item + size under a new bill replenishes stock.</p>
+<p class="lead">
+  Company: <strong><?= us_h($company['name']) ?></strong>.
+  Enter bill number, select registered item no (size fills automatically), enter quantity only.
+  Register new items under <a href="items.php">Items</a> first.
+</p>
 <?php if ($error !== ''): ?>
   <div class="flash flash-error"><?= us_h($error) ?></div>
 <?php endif; ?>
 
-<?php if ($existing): ?>
-<details style="margin-bottom:1rem">
-  <summary><strong>Fill from existing SKU</strong> (replenish)</summary>
-  <div class="actions" style="margin-top:0.75rem">
-    <select id="existing_sku">
-      <option value="">Select item + size…</option>
-      <?php foreach ($existing as $row): ?>
-        <option
-          value="<?= us_h($row['item_no'] . '|' . $row['item_name'] . '|' . $row['size']) ?>"
-          data-item-no="<?= us_h($row['item_no']) ?>"
-          data-item-name="<?= us_h($row['item_name']) ?>"
-          data-size="<?= us_h($row['size']) ?>"
-        >
-          <?= us_h($row['item_name'] . ' · ' . $row['item_no'] . ' · ' . $row['size'] . ' (on hand ' . $row['on_hand'] . ')') ?>
-        </option>
-      <?php endforeach; ?>
-    </select>
-    <button type="button" class="secondary" id="add_existing">Add to form</button>
+<?php if (!$catalog): ?>
+  <div class="flash flash-warn">
+    No items registered for this company.
+    <a href="items.php">Add an item</a> (name, item no, size) once, then receive stock here.
   </div>
-</details>
-<?php endif; ?>
-
+<?php else: ?>
 <form method="post" id="stock_in_form">
   <div class="grid grid-2">
     <div>
@@ -127,31 +112,46 @@ us_header('Stock in', $user);
     </div>
   </div>
 
-  <div class="line-rows" id="line_rows">
+  <div class="line-rows stock-in-rows" id="line_rows">
     <?php
-    $postedNos = $_POST['item_no'] ?? [''];
-    if (!is_array($postedNos) || $postedNos === []) {
-        $postedNos = [''];
+    $postedSku = $_POST['sku_id'] ?? [''];
+    if (!is_array($postedSku) || $postedSku === []) {
+        $postedSku = [''];
     }
-    $count = count($postedNos);
+    $count = count($postedSku);
     for ($i = 0; $i < $count; $i++):
-        $itemNo = (string) ($_POST['item_no'][$i] ?? '');
-        $itemName = (string) ($_POST['item_name'][$i] ?? '');
-        $size = (string) ($_POST['size'][$i] ?? '');
+        $selectedSku = (int) ($_POST['sku_id'][$i] ?? 0);
         $qty = (string) ($_POST['quantity'][$i] ?? '');
+        $selectedItemNo = '';
+        if ($selectedSku > 0) {
+            $skuRow = us_get_sku($pdo, $selectedSku, $companyId);
+            if ($skuRow) {
+                $selectedItemNo = (string) $skuRow['item_no'];
+            }
+        }
     ?>
-    <div class="line-row">
-      <div>
-        <label>Item name</label>
-        <input name="item_name[]" required value="<?= us_h($itemName) ?>">
-      </div>
+    <div class="line-row stock-in-row">
       <div>
         <label>Item no</label>
-        <input name="item_no[]" required value="<?= us_h($itemNo) ?>">
+        <select class="item-no-select" required>
+          <option value="">Select…</option>
+          <?php foreach ($itemNos as $no): ?>
+            <option value="<?= us_h($no) ?>" <?= $selectedItemNo === $no ? 'selected' : '' ?>>
+              <?= us_h($no . ' — ' . $catalog[$no]['item_name']) ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <div>
+        <label>Item name</label>
+        <input type="text" class="item-name-display" readonly tabindex="-1" value="">
       </div>
       <div>
         <label>Size</label>
-        <input name="size[]" required value="<?= us_h($size) ?>">
+        <select class="size-select" required>
+          <option value="">Select item no first…</option>
+        </select>
+        <input type="hidden" name="sku_id[]" class="sku-id-input" value="<?= $selectedSku > 0 ? (int) $selectedSku : '' ?>">
       </div>
       <div>
         <label>Qty</label>
@@ -171,18 +171,26 @@ us_header('Stock in', $user);
 </form>
 
 <template id="line_template">
-  <div class="line-row">
-    <div>
-      <label>Item name</label>
-      <input name="item_name[]" required>
-    </div>
+  <div class="line-row stock-in-row">
     <div>
       <label>Item no</label>
-      <input name="item_no[]" required>
+      <select class="item-no-select" required>
+        <option value="">Select…</option>
+        <?php foreach ($itemNos as $no): ?>
+          <option value="<?= us_h($no) ?>"><?= us_h($no . ' — ' . $catalog[$no]['item_name']) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <div>
+      <label>Item name</label>
+      <input type="text" class="item-name-display" readonly tabindex="-1" value="">
     </div>
     <div>
       <label>Size</label>
-      <input name="size[]" required>
+      <select class="size-select" required>
+        <option value="">Select item no first…</option>
+      </select>
+      <input type="hidden" name="sku_id[]" class="sku-id-input" value="">
     </div>
     <div>
       <label>Qty</label>
@@ -196,32 +204,119 @@ us_header('Stock in', $user);
 
 <script>
 (function () {
+  const catalog = <?= json_encode($catalog, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;
   const rows = document.getElementById('line_rows');
   const template = document.getElementById('line_template');
-  document.getElementById('add_line').addEventListener('click', function () {
-    rows.appendChild(template.content.cloneNode(true));
+
+  function fillRow(row, preferredSkuId) {
+    const itemSel = row.querySelector('.item-no-select');
+    const nameEl = row.querySelector('.item-name-display');
+    const sizeSel = row.querySelector('.size-select');
+    const skuInput = row.querySelector('.sku-id-input');
+    const itemNo = itemSel.value;
+    sizeSel.innerHTML = '';
+    skuInput.value = '';
+
+    if (!itemNo || !catalog[itemNo]) {
+      nameEl.value = '';
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'Select item no first…';
+      sizeSel.appendChild(opt);
+      sizeSel.disabled = false;
+      return;
+    }
+
+    nameEl.value = catalog[itemNo].item_name || '';
+    const sizes = catalog[itemNo].sizes || [];
+    if (sizes.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'No sizes registered';
+      sizeSel.appendChild(opt);
+      return;
+    }
+
+    if (sizes.length === 1) {
+      const s = sizes[0];
+      const opt = document.createElement('option');
+      opt.value = String(s.sku_id);
+      opt.textContent = s.size + ' (on hand ' + s.on_hand + ')';
+      opt.selected = true;
+      sizeSel.appendChild(opt);
+      sizeSel.disabled = true;
+      skuInput.value = String(s.sku_id);
+      return;
+    }
+
+    sizeSel.disabled = false;
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Select size…';
+    sizeSel.appendChild(placeholder);
+    let matched = false;
+    sizes.forEach(function (s) {
+      const opt = document.createElement('option');
+      opt.value = String(s.sku_id);
+      opt.textContent = s.size + ' (on hand ' + s.on_hand + ')';
+      if (preferredSkuId && String(s.sku_id) === String(preferredSkuId)) {
+        opt.selected = true;
+        matched = true;
+        skuInput.value = String(s.sku_id);
+      }
+      sizeSel.appendChild(opt);
+    });
+    if (!matched) {
+      skuInput.value = '';
+    }
+  }
+
+  function bindRow(row) {
+    const itemSel = row.querySelector('.item-no-select');
+    const sizeSel = row.querySelector('.size-select');
+    const skuInput = row.querySelector('.sku-id-input');
+    itemSel.addEventListener('change', function () {
+      fillRow(row, null);
+    });
+    sizeSel.addEventListener('change', function () {
+      skuInput.value = sizeSel.value || '';
+    });
+  }
+
+  rows.querySelectorAll('.stock-in-row').forEach(function (row) {
+    bindRow(row);
+    const preferred = row.querySelector('.sku-id-input').value;
+    fillRow(row, preferred || null);
   });
+
+  document.getElementById('add_line').addEventListener('click', function () {
+    const node = template.content.cloneNode(true);
+    const row = node.querySelector('.stock-in-row');
+    rows.appendChild(node);
+    bindRow(row);
+    fillRow(row, null);
+  });
+
   rows.addEventListener('click', function (e) {
     if (e.target.classList.contains('remove-line')) {
-      const row = e.target.closest('.line-row');
-      if (rows.querySelectorAll('.line-row').length > 1) {
+      const row = e.target.closest('.stock-in-row');
+      if (rows.querySelectorAll('.stock-in-row').length > 1) {
         row.remove();
       }
     }
   });
-  const addExisting = document.getElementById('add_existing');
-  if (addExisting) {
-    addExisting.addEventListener('click', function () {
-      const sel = document.getElementById('existing_sku');
-      const opt = sel.options[sel.selectedIndex];
-      if (!opt || !opt.value) return;
-      const node = template.content.cloneNode(true);
-      node.querySelector('input[name="item_name[]"]').value = opt.dataset.itemName || '';
-      node.querySelector('input[name="item_no[]"]').value = opt.dataset.itemNo || '';
-      node.querySelector('input[name="size[]"]').value = opt.dataset.size || '';
-      rows.appendChild(node);
+
+  document.getElementById('stock_in_form').addEventListener('submit', function () {
+    rows.querySelectorAll('.stock-in-row').forEach(function (row) {
+      const sizeSel = row.querySelector('.size-select');
+      const skuInput = row.querySelector('.sku-id-input');
+      if (sizeSel.value) {
+        skuInput.value = sizeSel.value;
+      }
+      sizeSel.disabled = false;
     });
-  }
+  });
 })();
 </script>
+<?php endif; ?>
 <?php us_footer(); ?>

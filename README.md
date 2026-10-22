@@ -4,13 +4,22 @@ PHP + SQLite stock inventory for a school uniform vendor. **Separate website** f
 
 ## Features
 
+- **Companies** — create a company name, then select it. Items, stock in/out, on-hand, reports, and deficit are **scoped to the selected company** (stock is never mixed across companies).
 - **Login** — session auth; default `admin` / `admin123` (change under Password)
-- **Stock in** — bill number + multiple lines (item name, item no, size, qty) in one save; replenish existing item+size under a new bill
+- **Items** — register item name, item no, and size once (item master). Add another size under the same item no when needed. **Edit** name / item no / size anytime. **Delete** only if the SKU has no stock-in or stock-out history (otherwise shown as Locked).
+- **Stock in** — bill number + multiple lines in one save. Each line: **select item no** → item name shown read-only → size auto-fills (or choose size if several) → enter **quantity only**. Replenish under a new bill the same way.
 - **Stock out** — issue date + quantities; deducts on-hand; blocks oversell
-- **Reports** — quantity lookup for one SKU; full item-wise stock statement
-- **Deficit** — SKUs with quantity &lt; 5; filters: all / by item / by size
+- **Reports** — quantity lookup for one SKU; full item-wise stock statement (current company)
+- **Deficit** — SKUs with quantity &lt; 5; filters: all / by item / by size (current company)
 
-SKU identity is **item_no + size** (with item name). On-hand = sum(receipts) − sum(issues).
+SKU identity is **company + item_no + size** (with item name). On-hand = sum(receipts) − sum(issues) per SKU.
+
+### Typical use
+
+1. **Companies** → create company → select it  
+2. **Items** → add item name / item no / size (edit or delete unused SKUs later)  
+3. **Stock in** → bill no → select item no → size auto → qty → save (multi-line OK)  
+4. Stock out / Reports / Deficit as needed  
 
 ## Requirements
 

@@ -2,9 +2,12 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/company.php';
 require_once __DIR__ . '/includes/layout.php';
 
 $user = us_require_login();
+$companyId = us_current_company_id();
+$company = $companyId ? us_get_company(us_db(), $companyId) : null;
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -31,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-us_header('Change password', $user);
+us_header('Change password', $user, $company);
 ?>
 <p class="lead">Update the admin login password for this site.</p>
 <?php if ($error !== ''): ?>

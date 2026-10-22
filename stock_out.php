@@ -1,12 +1,15 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/company.php';
 require_once __DIR__ . '/includes/layout.php';
 
-$user = us_require_login();
+$ctx = us_require_company();
+$user = $ctx['user'];
+$company = $ctx['company'];
+$companyId = (int) $company['id'];
 $pdo = us_db();
-$stock = us_stock_rows($pdo);
+$stock = us_stock_rows($pdo, $companyId);
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -41,6 +44,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = 'Each line needs an item/size and quantity ≥ 1.';
                 break;
             }
+            if (!us_get_sku($pdo, $line['sku_id'], $companyId)) {
+                $error = 'One or more selected items are not in this company.';
+                break;
+            }
         }
     }
 
@@ -50,9 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach ($lines as $line) {
                 $onHand = us_on_hand($pdo, $line['sku_id']);
                 if ($line['qty'] > $onHand) {
-                    $info = $pdo->prepare('SELECT item_name, item_no, size FROM skus WHERE id = ?');
-                    $info->execute([$line['sku_id']]);
-                    $sku = $info->fetch() ?: ['item_name' => '?', 'item_no' => '?', 'size' => '?'];
+                    $sku = us_get_sku($pdo, $line['sku_id'], $companyId) ?: ['item_name' => '?', 'item_no' => '?', 'size' => '?'];
                     throw new RuntimeException(
                         'Cannot issue ' . $line['qty'] . ' of '
                         . $sku['item_name'] . ' / ' . $sku['item_no'] . ' / ' . $sku['size']
@@ -60,8 +65,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     );
                 }
             }
-            $insI = $pdo->prepare('INSERT INTO issues (issue_date) VALUES (?)');
-            $insI->execute([$issueDate]);
+            $insI = $pdo->prepare('INSERT INTO issues (company_id, issue_date) VALUES (?, ?)');
+            $insI->execute([$companyId, $issueDate]);
             $issueId = (int) $pdo->lastInsertId();
             $insL = $pdo->prepare('INSERT INTO issue_lines (issue_id, sku_id, quantity) VALUES (?, ?, ?)');
             foreach ($lines as $line) {
@@ -80,15 +85,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-us_header('Stock out', $user);
+us_header('Stock out', $user, $company);
 ?>
-<p class="lead">Issue stock by date and quantity. Saving deducts on-hand; oversell is blocked.</p>
+<p class="lead">
+  Company: <strong><?= us_h($company['name']) ?></strong>.
+  Issue stock by date and quantity. Saving deducts on-hand; oversell is blocked.
+</p>
 <?php if ($error !== ''): ?>
   <div class="flash flash-error"><?= us_h($error) ?></div>
 <?php endif; ?>
 
 <?php if (!$stock): ?>
-  <p class="muted">No stock yet. <a href="stock_in.php">Receive a bill</a> first.</p>
+  <p class="muted">No stock yet. <a href="items.php">Add items</a> and <a href="stock_in.php">receive a bill</a> first.</p>
 <?php else: ?>
 <form method="post" id="stock_out_form">
   <div style="max-width:280px">

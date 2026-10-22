@@ -1,10 +1,13 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/company.php';
 require_once __DIR__ . '/includes/layout.php';
 
-$user = us_require_login();
+$ctx = us_require_company();
+$user = $ctx['user'];
+$company = $ctx['company'];
+$companyId = (int) $company['id'];
 $pdo = us_db();
 
 $filter = (string) ($_GET['filter'] ?? 'all');
@@ -14,19 +17,27 @@ if (!in_array($filter, ['all', 'item', 'size'], true)) {
 $itemNo = trim((string) ($_GET['item_no'] ?? ''));
 $size = trim((string) ($_GET['size'] ?? ''));
 
-$items = $pdo->query('SELECT DISTINCT item_no, item_name FROM skus ORDER BY item_name COLLATE NOCASE')->fetchAll();
-$sizes = $pdo->query('SELECT DISTINCT size FROM skus ORDER BY size COLLATE NOCASE')->fetchAll();
+$itemStmt = $pdo->prepare('SELECT DISTINCT item_no, item_name FROM skus WHERE company_id = ? ORDER BY item_name COLLATE NOCASE');
+$itemStmt->execute([$companyId]);
+$items = $itemStmt->fetchAll();
+$sizeStmt = $pdo->prepare('SELECT DISTINCT size FROM skus WHERE company_id = ? ORDER BY size COLLATE NOCASE');
+$sizeStmt->execute([$companyId]);
+$sizes = $sizeStmt->fetchAll();
 
 $rows = us_stock_rows(
     $pdo,
+    $companyId,
     $filter === 'item' ? $itemNo : null,
     $filter === 'size' ? $size : null
 );
 $deficit = array_values(array_filter($rows, static fn(array $r): bool => (int) $r['on_hand'] < US_DEFICIT_THRESHOLD));
 
-us_header('Deficit', $user);
+us_header('Deficit', $user, $company);
 ?>
-<p class="lead">SKUs with on-hand quantity &lt; <?= (int) US_DEFICIT_THRESHOLD ?>. Filter by all, item, or size.</p>
+<p class="lead">
+  Company: <strong><?= us_h($company['name']) ?></strong>.
+  SKUs with on-hand quantity &lt; <?= (int) US_DEFICIT_THRESHOLD ?>. Filter by all, item, or size.
+</p>
 
 <form method="get" class="grid grid-2" style="margin-bottom:1rem">
   <div>

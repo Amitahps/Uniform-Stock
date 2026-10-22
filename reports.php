@@ -1,10 +1,13 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/company.php';
 require_once __DIR__ . '/includes/layout.php';
 
-$user = us_require_login();
+$ctx = us_require_company();
+$user = $ctx['user'];
+$company = $ctx['company'];
+$companyId = (int) $company['id'];
 $pdo = us_db();
 
 $lookupSkuId = isset($_GET['sku_id']) ? (int) $_GET['sku_id'] : 0;
@@ -13,7 +16,7 @@ if (!in_array($mode, ['lookup', 'statement'], true)) {
     $mode = 'lookup';
 }
 
-$all = us_stock_rows($pdo);
+$all = us_stock_rows($pdo, $companyId);
 $lookup = null;
 if ($lookupSkuId > 0) {
     foreach ($all as $row) {
@@ -24,9 +27,12 @@ if ($lookupSkuId > 0) {
     }
 }
 
-us_header('Reports', $user);
+us_header('Reports', $user, $company);
 ?>
-<p class="lead">Look up quantity for one SKU, or view the full item-wise stock statement.</p>
+<p class="lead">
+  Company: <strong><?= us_h($company['name']) ?></strong>.
+  Look up quantity for one SKU, or view the full item-wise stock statement.
+</p>
 
 <div class="actions" style="margin-bottom:1rem">
   <a class="btn <?= $mode === 'lookup' ? '' : 'secondary' ?>" href="?mode=lookup">Quantity lookup</a>
@@ -74,12 +80,12 @@ us_header('Reports', $user);
       </tbody>
     </table>
   <?php elseif ($lookupSkuId > 0): ?>
-    <p class="muted">SKU not found.</p>
+    <p class="muted">SKU not found in this company.</p>
   <?php endif; ?>
 
 <?php else: ?>
   <?php if (!$all): ?>
-    <p class="muted">No stock recorded yet.</p>
+    <p class="muted">No stock recorded yet for this company.</p>
   <?php else: ?>
     <table>
       <thead>

@@ -56,7 +56,7 @@ function us_attempt_login(string $username, string $password): bool
 function us_logout(): void
 {
     us_start_session();
-    $_SESSION = [];
+    $_SESSION = []; // clears user_id and company_id
     if (ini_get('session.use_cookies')) {
         $p = session_get_cookie_params();
         setcookie(session_name(), '', time() - 42000, $p['path'], $p['domain'], (bool) $p['secure'], (bool) $p['httponly']);
