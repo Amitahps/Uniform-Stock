@@ -64,6 +64,8 @@ us_header('Reports', $user, $company);
 <p class="lead">
   Company: <strong><?= us_h($company['name']) ?></strong>.
   Quantity lookup, item-wise statement, or date-range stock movements.
+  Each row is one SKU: <strong>item name + item code + size</strong>.
+  Same name with size 3 and size 4 (or different codes) always appear as <strong>separate lines</strong> with their own qty in/out/balance — never merged.
 </p>
 
 <div class="actions" style="margin-bottom:1rem">
@@ -117,6 +119,9 @@ us_header('Reports', $user, $company);
   <?php endif; ?>
 
 <?php elseif ($mode === 'statement'): ?>
+  <p class="muted" style="margin-top:0">
+    One row per item code + size. Example: name A / size 3 and name A / size 4 are two lines, each with its own on-hand.
+  </p>
   <?php if (!$all): ?>
     <p class="muted">No stock recorded yet for this company.</p>
   <?php else: ?>
@@ -148,6 +153,7 @@ us_header('Reports', $user, $company);
   <p class="muted" style="margin-top:0">
     <strong>Qty In</strong> / <strong>Qty Out</strong> = movements with dates in the range (inclusive).
     <strong>Balance</strong> = closing on-hand as of the <em>To</em> date (all stock in/out on or before that date).
+    Totals are per SKU (name + item code + size), not collapsed by name.
   </p>
   <form method="get" class="grid grid-2" style="max-width:820px;margin-bottom:1rem">
     <input type="hidden" name="mode" value="movements">
@@ -160,12 +166,12 @@ us_header('Reports', $user, $company);
       <input id="date_to" name="date_to" type="date" required value="<?= us_h($dateTo) ?>">
     </div>
     <div>
-      <label for="item_no">Item (optional)</label>
+      <label for="item_no">Item code (optional)</label>
       <select id="item_no" name="item_no">
-        <option value="">All items</option>
+        <option value="">All item codes</option>
         <?php foreach ($itemOptions as $it): ?>
           <option value="<?= us_h($it['item_no']) ?>" <?= $itemNoFilter === $it['item_no'] ? 'selected' : '' ?>>
-            <?= us_h($it['item_name'] . ' (' . $it['item_no'] . ')') ?>
+            <?= us_h($it['item_name'] . ' · ' . $it['item_no']) ?>
           </option>
         <?php endforeach; ?>
       </select>

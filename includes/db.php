@@ -533,12 +533,15 @@ function us_create_sku(PDO $pdo, int $companyId, string $itemNo, string $itemNam
     $itemName = trim($itemName);
     $size = trim($size);
 
+    // Uniqueness is company + item code + size only. Item names may repeat across codes.
     $find = $pdo->prepare('SELECT id FROM skus WHERE company_id = ? AND item_no = ? AND size = ?');
     $find->execute([$companyId, $itemNo, $size]);
     if ($find->fetch()) {
         throw new RuntimeException('Item code "' . $itemNo . '" with size "' . $size . '" is already registered for this company.');
     }
 
+    // Same item code, new size: keep the existing display name for that code.
+    // New item code may freely reuse any existing name.
     $nameStmt = $pdo->prepare('SELECT item_name FROM skus WHERE company_id = ? AND item_no = ? ORDER BY id LIMIT 1');
     $nameStmt->execute([$companyId, $itemNo]);
     $existingName = $nameStmt->fetchColumn();

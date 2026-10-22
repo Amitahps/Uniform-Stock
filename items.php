@@ -69,8 +69,10 @@ $skus = us_stock_rows($pdo, $companyId);
 us_header('Items', $user, $company);
 ?>
 <p class="lead">
-  Register item name, item code, and size once for <strong><?= us_h($company['name']) ?></strong>.
-  Stock-in bills only select these and enter quantity. Edit anytime; delete only if the SKU has no stock history.
+  Register item name, item code, and size for <strong><?= us_h($company['name']) ?></strong>.
+  The same <strong>item name</strong> may be reused with different <strong>item codes</strong> and sizes
+  (e.g. Shirt / U-01 / 32 and Shirt / U-02 / 32). Uniqueness is <strong>item code + size</strong> only.
+  Stock-in selects by item code. Edit anytime; delete only if the SKU has no stock history.
 </p>
 <?php if ($error !== ''): ?>
   <div class="flash flash-error"><?= us_h($error) ?></div>
@@ -123,7 +125,7 @@ us_header('Items', $user, $company);
         <?php endforeach; ?>
       </datalist>
       <p class="muted" style="margin:0.35rem 0 0;font-size:0.9rem">
-        If the item code already exists, its name is kept; you are adding another size.
+        Same name with a <em>new</em> code is allowed. If this code already exists, its name is kept and you are adding another size.
       </p>
     </div>
   </div>

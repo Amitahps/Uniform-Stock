@@ -44,18 +44,18 @@ us_header('Deficit', $user, $company);
     <label for="filter">Filter</label>
     <select id="filter" name="filter" onchange="this.form.submit()">
       <option value="all" <?= $filter === 'all' ? 'selected' : '' ?>>All deficit</option>
-      <option value="item" <?= $filter === 'item' ? 'selected' : '' ?>>By item</option>
+      <option value="item" <?= $filter === 'item' ? 'selected' : '' ?>>By item code</option>
       <option value="size" <?= $filter === 'size' ? 'selected' : '' ?>>By size</option>
     </select>
   </div>
   <?php if ($filter === 'item'): ?>
     <div>
-      <label for="item_no">Item</label>
+      <label for="item_no">Item code</label>
       <select id="item_no" name="item_no" onchange="this.form.submit()">
-        <option value="">Select item…</option>
+        <option value="">Select item code…</option>
         <?php foreach ($items as $it): ?>
           <option value="<?= us_h($it['item_no']) ?>" <?= $itemNo === $it['item_no'] ? 'selected' : '' ?>>
-            <?= us_h($it['item_name'] . ' (' . $it['item_no'] . ')') ?>
+            <?= us_h($it['item_name'] . ' · ' . $it['item_no']) ?>
           </option>
         <?php endforeach; ?>
       </select>
@@ -76,7 +76,7 @@ us_header('Deficit', $user, $company);
 </form>
 
 <?php if ($filter === 'item' && $itemNo === ''): ?>
-  <p class="muted">Choose an item to list its deficit sizes.</p>
+  <p class="muted">Choose an item code to list its deficit sizes (same name on other codes is listed separately).</p>
 <?php elseif ($filter === 'size' && $size === ''): ?>
   <p class="muted">Choose a size to list deficit items.</p>
 <?php elseif (!$deficit): ?>

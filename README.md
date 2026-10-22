@@ -6,13 +6,13 @@ PHP + SQLite stock inventory for a school uniform vendor. **Separate website** f
 
 - **Companies** — create a company name, then select it. Items, stock in/out, on-hand, reports, and deficit are **scoped to the selected company** (stock is never mixed across companies). **Remove company** requires typing the name and re-entering the admin password; that company’s items and stock history are permanently deleted (other companies untouched).
 - **Login** — session auth; default `admin` / `admin123` (change under Password)
-- **Items** — register **item name**, **item code**, and **size** once (item master; field order name → code → size). Add another size under the same item code when needed. **Edit** anytime. **Delete** only if the SKU has no stock-in or stock-out history (otherwise shown as Locked).
-- **Stock in** — bill number + multiple lines in one save. Each line: item name (read-only) → **select item code** → size auto-fills (or choose if several) → enter **quantity only**. Replenish under a new bill the same way.
+- **Items** — register **item name**, **item code**, and **size** (field order name → code → size). The **same name may be reused** with different codes/sizes (e.g. Shirt / U-01 / 32 and Shirt / U-02 / 32). Uniqueness is **company + item code + size** only. Add another size under the same code when needed. **Edit** anytime. **Delete** only if unused (no stock history).
+- **Stock in** — bill number + multiple lines in one save. Each line: item name (read-only) → **select item code** → size auto-fills (or choose if several) → enter **quantity only**. Names may repeat across codes in the list.
 - **Stock out** — issue date + quantities; deducts on-hand; blocks oversell
-- **Reports** — quantity lookup; item-wise statement; **date-range movements** (Qty In / Qty Out in range, Balance = closing on-hand as of the To date). Optional item filter. Current company only.
+- **Reports** — quantity lookup; item-wise statement; **date-range movements** (Qty In / Qty Out in range, Balance = closing on-hand as of the To date). Every report row is one SKU: **name + item code + size** with its own figures — sizes (and codes) under the same name are never merged. Optional filter by item code. Current company only.
 - **Deficit** — SKUs with quantity &lt; 5; filters: all / by item / by size (current company)
 
-SKU identity is **company + item code + size** (stored as `item_no` in the database, with item name). On-hand = sum(receipts) − sum(issues) per SKU.
+SKU identity is **company + item code + size** (DB column `item_no`). Item **name is not unique**. On-hand = sum(receipts) − sum(issues) per SKU.
 
 ### Typical use
 
